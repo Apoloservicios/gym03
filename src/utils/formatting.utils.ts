@@ -1,17 +1,29 @@
 // src/utils/formatting.utils.ts
 
-export const formatCurrency = (amount: number): string => {
+// Formatear un número como moneda
+export const formatCurrency = (amount: number | null | undefined): string => {
+  if (amount === null || amount === undefined) {
+    return '$0';
+  }
+  
+  try {
     return amount.toLocaleString('es-AR', {
       style: 'currency',
       currency: 'ARS',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     });
-  };
+  } catch (error) {
+    console.error('Error formatting currency:', error);
+    return `$${amount}`;
+  }
+};
+
+// Formatear un número de teléfono
+export const formatPhone = (phone: string | null | undefined): string => {
+  if (!phone) return '';
   
-  export const formatPhone = (phone: string): string => {
-    if (!phone) return '';
-    
+  try {
     const cleaned = phone.replace(/\D/g, '');
     
     if (cleaned.length === 10) {
@@ -21,11 +33,17 @@ export const formatCurrency = (amount: number): string => {
     }
     
     return phone;
-  };
+  } catch (error) {
+    console.error('Error formatting phone:', error);
+    return phone;
+  }
+};
+
+// Formatear un CUIT
+export const formatCUIT = (cuit: string | null | undefined): string => {
+  if (!cuit) return '';
   
-  export const formatCUIT = (cuit: string): string => {
-    if (!cuit) return '';
-    
+  try {
     const cleaned = cuit.replace(/\D/g, '');
     
     if (cleaned.length === 11) {
@@ -33,10 +51,14 @@ export const formatCurrency = (amount: number): string => {
     }
     
     return cuit;
-  };
-  
-  export default {
-    formatCurrency,
-    formatPhone,
-    formatCUIT
-  };
+  } catch (error) {
+    console.error('Error formatting CUIT:', error);
+    return cuit;
+  }
+};
+
+export default {
+  formatCurrency,
+  formatPhone,
+  formatCUIT
+};

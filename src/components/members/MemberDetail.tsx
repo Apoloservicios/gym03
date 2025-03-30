@@ -1,9 +1,15 @@
 // src/components/members/MemberDetail.tsx
 
-import React, { useState } from 'react';
-import { Mail, Phone, Calendar, MapPin, Edit, Trash, QrCode, CreditCard, Plus, Clock, DollarSign, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Mail, Phone, Calendar, MapPin, Edit, Trash, QrCode, CreditCard, Plus, Clock, DollarSign, ChevronDown, ChevronUp, FileText, History, User } from 'lucide-react';
 import { Member } from '../../types/member.types';
+import { MembershipAssignment } from '../../types/member.types';
 import { formatCurrency } from '../../utils/formatting.utils';
+import MemberAccountStatement from './MemberAccountStatement';
+import MemberPayment from './MemberPayment';
+import MemberAttendanceHistory from './MemberAttendanceHistory';
+import useAuth from '../../hooks/useAuth';
+import { getMemberMemberships } from '../../services/member.service';
 
 interface MemberDetailProps {
   member: Member;
@@ -20,49 +26,32 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
   onGenerateQr, 
   onAssignMembership 
 }) => {
-  const [showAllMemberships, setShowAllMemberships] = useState(false);
+  const { gymData } = useAuth();
+  // Estado para controlar las diferentes vistas
+  const [activeView, setActiveView] = useState<'details' | 'memberships' | 'account' | 'attendance' | 'payment'>('details');
+  const [memberships, setMemberships] = useState<MembershipAssignment[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
   
-  // En un caso real, esta información vendría de la base de datos
-  const memberships = [
-    {
-      id: 'mem1',
-      activityName: 'Musculación',
-      startDate: '2025-03-01',
-      endDate: '2025-04-01',
-      status: 'active',
-      paymentStatus: 'paid',
-      cost: 10000,
-      maxAttendances: 30,
-      currentAttendances: 12
-    },
-    {
-      id: 'mem2',
-      activityName: 'Yoga',
-      startDate: '2025-02-15',
-      endDate: '2025-03-15',
-      status: 'expired',
-      paymentStatus: 'paid',
-      cost: 9000,
-      maxAttendances: 8,
-      currentAttendances: 8
-    },
-    {
-      id: 'mem3',
-      activityName: 'Pilates',
-      startDate: '2025-01-10',
-      endDate: '2025-02-10',
-      status: 'expired',
-      paymentStatus: 'paid',
-      cost: 14000,
-      maxAttendances: 8,
-      currentAttendances: 6
-    }
-  ];
-  
-  // Mostrar solo las membresías activas o todas según estado
-  const visibleMemberships = showAllMemberships 
-    ? memberships 
-    : memberships.filter(m => m.status === 'active');
+  // Cargar membresías del socio
+  useEffect(() => {
+    const fetchMemberships = async () => {
+      if (!gymData?.id || !member.id) return;
+      
+      setLoading(true);
+      try {
+        const membershipData = await getMemberMemberships(gymData.id, member.id);
+        setMemberships(membershipData);
+      } catch (error) {
+        console.error('Error loading memberships:', error);
+        setError('Error al cargar las membresías del socio');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMemberships();
+  }, [gymData?.id, member.id]);
   
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -99,6 +88,278 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
   const calculateAttendancePercentage = (current: number, max: number) => {
     if (!max) return 0;
     return Math.round((current / max) * 100);
+  };
+  
+  // Función para renderizar la vista activa
+  const renderActiveView = () => {
+    switch (activeView) {
+      case 'account':
+        return (
+          <MemberAccountStatement 
+            memberId={member.id} 
+            memberName={`${member.firstName} ${member.lastName}`}
+            totalDebt={member.totalDebt}
+            onRegisterPayment={() => setActiveView('payment')}
+          />
+        );
+      case 'payment':
+        return (
+          <MemberPayment 
+            member={member}
+            onSuccess={() => {
+              // Actualizar datos y volver a la vista de cuenta
+              setActiveView('account');
+            }}
+            onCancel={() => setActiveView('account')}
+          />
+        );
+      case 'attendance':
+        return (
+          <MemberAttendanceHistory 
+            memberId={member.id}
+            memberName={`${member.firstName} ${member.lastName}`}
+          />
+        );
+      case 'memberships':
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Membresías del Socio</h3>
+              <button 
+                onClick={() => onAssignMembership(member)}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                <Plus size={18} className="mr-2" />
+                Asignar Nueva Membresía
+              </button>
+            </div>
+            
+            {loading ? (
+              <div className="flex justify-center items-center py-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : memberships.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg">
+                <div className="mx-auto h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                  <CreditCard size={24} className="text-gray-400" />
+                </div>
+                <h4 className="text-gray-600 text-sm font-medium">No hay membresías asignadas</h4>
+                <button 
+                  onClick={() => onAssignMembership(member)}
+                  className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Asignar Nueva Membresía
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {memberships.map((membership) => (
+                  <div key={membership.id} className="border rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between">
+                      <div>
+                        <h3 className="font-medium">{membership.activityName}</h3>
+                        <div className="flex items-center mt-1 space-x-2">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusStyles(membership.status)}`}>
+                            {membership.status === 'active' ? 'Activa' : membership.status === 'expired' ? 'Vencida' : 'Cancelada'}
+                          </span>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusStyles(membership.paymentStatus)}`}>
+                            {membership.paymentStatus === 'paid' ? 'Pagada' : 'Pendiente'}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center mt-2 sm:mt-0">
+                        <div className="text-sm text-gray-600 mr-4">
+                          <div className="flex items-center">
+                            <Calendar size={14} className="mr-1" />
+                            <span>{membership.startDate} - {membership.endDate}</span>
+                          </div>
+                          <div className="flex items-center mt-1">
+                            <DollarSign size={14} className="mr-1" />
+                            <span>{formatCurrency(membership.cost)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-4">
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span>Asistencias: {membership.currentAttendances} de {membership.maxAttendances}</span>
+                        <span>{calculateAttendancePercentage(membership.currentAttendances, membership.maxAttendances)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full" 
+                          style={{ width: `${calculateAttendancePercentage(membership.currentAttendances, membership.maxAttendances)}%` }}
+                        ></div>
+                      </div>
+                      {membership.description && (
+                        <p className="mt-2 text-sm text-gray-600">{membership.description}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      case 'details':
+      default:
+        return (
+          <div className="space-y-6">
+            {/* Información Personal */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Información Personal</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500">Nombre Completo</h4>
+                  <p>{member.firstName} {member.lastName}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500">Correo Electrónico</h4>
+                  <p>{member.email || 'No especificado'}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500">Teléfono</h4>
+                  <p>{member.phone || 'No especificado'}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500">Dirección</h4>
+                  <p>{member.address || 'No especificado'}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500">Fecha de Nacimiento</h4>
+                  <p>{member.birthDate ? formatDate(member.birthDate) : 'No especificado'}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500">Estado</h4>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    member.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {member.status === 'active' ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Finanzas */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Información Financiera</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 rounded-lg border">
+                  <h4 className="text-sm font-medium text-gray-500 mb-1">Deuda Total</h4>
+                  <p className={`text-xl font-bold ${member.totalDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {formatCurrency(member.totalDebt)}
+                  </p>
+                  {member.totalDebt > 0 && (
+                    <button 
+                      onClick={() => setActiveView('payment')}
+                      className="mt-2 text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                    >
+                      <DollarSign size={16} className="mr-1" />
+                      Registrar Pago
+                    </button>
+                  )}
+                </div>
+                
+                <div className="p-4 bg-gray-50 rounded-lg border">
+                  <h4 className="text-sm font-medium text-gray-500 mb-1">Última Asistencia</h4>
+                  <p className="text-xl font-bold text-gray-700">
+                    {member.lastAttendance ? member.lastAttendance : 'Nunca'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Membresías Activas */}
+            <div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Membresías Activas</h3>
+                <button 
+                  onClick={() => setActiveView('memberships')}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  Ver todas las membresías
+                </button>
+              </div>
+              
+              {loading ? (
+                <div className="flex justify-center items-center py-6">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : memberships.filter(m => m.status === 'active').length === 0 ? (
+                <div className="text-center py-6 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-500">No hay membresías activas</p>
+                  <button 
+                    onClick={() => onAssignMembership(member)}
+                    className="mt-2 text-sm text-blue-600 hover:text-blue-800 flex items-center justify-center mx-auto"
+                  >
+                    <Plus size={16} className="mr-1" />
+                    Asignar Nueva Membresía
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {memberships
+                    .filter(m => m.status === 'active')
+                    .map((membership) => (
+                      <div key={membership.id} className="border rounded-lg p-3 flex justify-between items-center">
+                        <div>
+                          <h4 className="font-medium">{membership.activityName}</h4>
+                          <p className="text-sm text-gray-500">
+                            Vence: {membership.endDate}
+                          </p>
+                        </div>
+                        <div>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            membership.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
+                          }`}>
+                            {membership.paymentStatus === 'paid' ? 'Pagada' : 'Pendiente'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Acciones Rápidas */}
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Acciones Rápidas</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button 
+                  onClick={() => onGenerateQr(member)}
+                  className="p-4 border rounded-lg hover:bg-gray-50 flex flex-col items-center justify-center"
+                >
+                  <QrCode size={24} className="mb-2 text-blue-600" />
+                  <span className="text-sm font-medium">Generar Código QR</span>
+                </button>
+                
+                <button 
+                  onClick={() => onAssignMembership(member)}
+                  className="p-4 border rounded-lg hover:bg-gray-50 flex flex-col items-center justify-center"
+                >
+                  <Plus size={24} className="mb-2 text-green-600" />
+                  <span className="text-sm font-medium">Asignar Membresía</span>
+                </button>
+                
+                <button 
+                  onClick={() => setActiveView('payment')}
+                  className="p-4 border rounded-lg hover:bg-gray-50 flex flex-col items-center justify-center"
+                >
+                  <DollarSign size={24} className="mb-2 text-purple-600" />
+                  <span className="text-sm font-medium">Registrar Pago</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+    }
   };
   
   return (
@@ -186,117 +447,51 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
         </div>
       </div>
       
-      {/* Sección de acciones rápidas */}
+      {/* Menú de navegación */}
       <div className="border-b border-gray-200 bg-gray-50">
         <div className="flex flex-wrap">
           <button 
-            onClick={() => onGenerateQr(member)}
-            className="flex-1 text-center py-3 px-4 text-sm font-medium hover:bg-gray-100 flex items-center justify-center"
+            onClick={() => setActiveView('details')}
+            className={`flex-1 text-center py-3 px-4 text-sm font-medium ${activeView === 'details' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'} flex items-center justify-center`}
           >
-            <QrCode size={18} className="mr-2 text-blue-600" />
-            Generar QR
+            <User size={18} className="mr-2" />
+            Detalles
           </button>
           
           <button 
-            onClick={() => onAssignMembership(member)}
-            className="flex-1 text-center py-3 px-4 text-sm font-medium hover:bg-gray-100 flex items-center justify-center"
+            onClick={() => setActiveView('memberships')}
+            className={`flex-1 text-center py-3 px-4 text-sm font-medium ${activeView === 'memberships' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'} flex items-center justify-center`}
           >
-            <Plus size={18} className="mr-2 text-green-600" />
-            Asignar Membresía
+            <CreditCard size={18} className="mr-2" />
+            Membresías
           </button>
           
           <button 
-            className="flex-1 text-center py-3 px-4 text-sm font-medium hover:bg-gray-100 flex items-center justify-center"
+            onClick={() => setActiveView('account')}
+            className={`flex-1 text-center py-3 px-4 text-sm font-medium ${activeView === 'account' || activeView === 'payment' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'} flex items-center justify-center`}
           >
-            <CreditCard size={18} className="mr-2 text-purple-600" />
-            Registrar Pago
+            <FileText size={18} className="mr-2" />
+            Cuenta
+          </button>
+          
+          <button 
+            onClick={() => setActiveView('attendance')}
+            className={`flex-1 text-center py-3 px-4 text-sm font-medium ${activeView === 'attendance' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'} flex items-center justify-center`}
+          >
+            <History size={18} className="mr-2" />
+            Asistencias
           </button>
         </div>
       </div>
       
-      {/* Sección de membresías */}
+      {/* Contenido según la vista activa */}
       <div className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Membresías</h2>
-          
-          <button 
-            onClick={() => setShowAllMemberships(!showAllMemberships)}
-            className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
-          >
-            {showAllMemberships ? (
-              <>
-                <ChevronUp size={16} className="mr-1" />
-                Mostrar activas
-              </>
-            ) : (
-              <>
-                <ChevronDown size={16} className="mr-1" />
-                Mostrar todas
-              </>
-            )}
-          </button>
-        </div>
-        
-        {visibleMemberships.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="mx-auto h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-              <CreditCard size={24} className="text-gray-400" />
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium">No hay membresías activas</h3>
-            <button 
-              onClick={() => onAssignMembership(member)}
-              className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Asignar Nueva Membresía
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {visibleMemberships.map((membership) => (
-              <div key={membership.id} className="border rounded-lg overflow-hidden">
-                <div className="bg-gray-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between">
-                  <div>
-                    <h3 className="font-medium">{membership.activityName}</h3>
-                    <div className="flex items-center mt-1 space-x-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusStyles(membership.status)}`}>
-                        {membership.status === 'active' ? 'Activa' : 'Vencida'}
-                      </span>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusStyles(membership.paymentStatus)}`}>
-                        {membership.paymentStatus === 'paid' ? 'Pagada' : 'Pendiente'}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center mt-2 sm:mt-0">
-                    <div className="text-sm text-gray-600 mr-4">
-                      <div className="flex items-center">
-                        <Calendar size={14} className="mr-1" />
-                        <span>{formatDate(membership.startDate)} - {formatDate(membership.endDate)}</span>
-                      </div>
-                      <div className="flex items-center mt-1">
-                        <DollarSign size={14} className="mr-1" />
-                        <span>{formatCurrency(membership.cost)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4">
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span>Asistencias: {membership.currentAttendances} de {membership.maxAttendances}</span>
-                    <span>{calculateAttendancePercentage(membership.currentAttendances, membership.maxAttendances)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${calculateAttendancePercentage(membership.currentAttendances, membership.maxAttendances)}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            ))}
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
+            {error}
           </div>
         )}
+        {renderActiveView()}
       </div>
     </div>
   );

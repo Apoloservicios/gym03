@@ -68,6 +68,9 @@ export interface Transaction {
   userName: string;
   paymentMethod?: string;
   status: 'completed' | 'pending' | 'cancelled';
+  notes?: string;  // Campo notes como opcional
+  createdAt?: any;  // Campo createdAt como opcional
+  updatedAt?: any;  // También añadimos updatedAt por consistencia
 }
 
 export interface DailyCash {
