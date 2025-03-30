@@ -8,7 +8,7 @@ export interface Attendance {
   timestamp: any; // Timestamp de Firebase
   membershipId: string;
   activityName: string;
-  status: 'success' | 'error'; // Corregido para usar strings específicos en lugar de tipos como se usa en tu código
+  status: 'success' | 'error';
   error?: string;
 }
 
@@ -55,10 +55,15 @@ export interface Activity {
   description: string;
 }
 
+// Actualización de tipos para incluir todas las categorías utilizadas
+export type TransactionIncomeCategory = 'membership' | 'extra' | 'product' | 'service' | 'other';
+export type TransactionExpenseCategory = 'withdrawal' | 'supplier' | 'services' | 'maintenance' | 'salary' | 'other';
+export type TransactionCategory = TransactionIncomeCategory | TransactionExpenseCategory;
+
 export interface Transaction {
   id: string;
   type: 'income' | 'expense';
-  category: 'membership' | 'extra' | 'other';
+  category?: TransactionCategory;
   amount: number;
   description: string;
   memberId?: string;
@@ -68,9 +73,9 @@ export interface Transaction {
   userName: string;
   paymentMethod?: string;
   status: 'completed' | 'pending' | 'cancelled';
-  notes?: string;  // Campo notes como opcional
-  createdAt?: any;  // Campo createdAt como opcional
-  updatedAt?: any;  // También añadimos updatedAt por consistencia
+  notes?: string;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface DailyCash {

@@ -1,7 +1,8 @@
+// src/components/cashier/TransactionList.tsx
 
 import React, { useState } from 'react';
 import { Search, Filter, Download, Check, X, User, Clock, TrendingUp, TrendingDown } from 'lucide-react';
-import { Transaction } from '../../types/gym.types';
+import { Transaction, TransactionCategory } from '../../types/gym.types';
 import { formatCurrency } from '../../utils/formatting.utils';
 
 interface TransactionListProps {
@@ -38,7 +39,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
   });
 
   // Obtener categorías únicas para el filtro
-  const uniqueCategories = [...new Set(transactions.map(tx => tx.category))].filter(Boolean);
+  const uniqueCategories: string[] = Array.from(
+    new Set(transactions.map(tx => tx.category || 'other'))
+  );
 
   // Exportar a CSV
   const handleExportCSV = () => {
@@ -108,7 +111,13 @@ const TransactionList: React.FC<TransactionListProps> = ({
     switch (category.toLowerCase()) {
       case 'membership': return 'Membresía';
       case 'extra': return 'Ingreso Extra';
+      case 'product': return 'Producto';
+      case 'service': return 'Servicio';
       case 'withdrawal': return 'Retiro';
+      case 'supplier': return 'Proveedor';
+      case 'services': return 'Servicios';
+      case 'maintenance': return 'Mantenimiento';
+      case 'salary': return 'Sueldos';
       case 'other': return 'Otro';
       default: return category;
     }
@@ -261,7 +270,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoría</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
@@ -273,6 +281,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredTransactions.map((tx) => (
                 <tr key={tx.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="text-sm text-gray-900">{formatTime(tx.date)}</span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm text-gray-900">{getCategoryName(tx.category)}</span>
                   </td>

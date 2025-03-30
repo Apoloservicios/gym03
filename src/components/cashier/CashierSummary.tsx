@@ -217,10 +217,10 @@ const CashierSummary: React.FC<CashierSummaryProps> = ({
                       {tx.description}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {tx.category === 'membership' ? 'Membresía' : 
-                       tx.category === 'extra' ? 'Ingreso Extra' : 
+                    {tx.category === 'membership' ? 'Membresía' : 
+                        tx.category === 'extra' ? 'Ingreso Extra' : 
                        tx.category === 'withdrawal' ? 'Retiro' : 
-                       tx.category || 'Otro'}
+                        typeof tx.category === 'string' ? tx.category : 'Otro'}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium text-right ${
                       tx.type === 'income' ? 'text-green-600' : 'text-red-600'
