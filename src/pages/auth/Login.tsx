@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
+import { LogIn, Mail, Lock, AlertCircle, Building, User } from 'lucide-react';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../../config/firebase';
+import { loginUser } from '../../services/auth.service';
 
 interface LoginProps {
-  onLogin?: () => void;
+  onLogin: (userInfo: any) => void;
+  onRegisterClick: () => void;
 }
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC<LoginProps> = ({ onLogin, onRegisterClick }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,18 +21,37 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError('');
 
     try {
-      // Aquí iría la lógica de autenticación real
-      // Simulamos un login exitoso después de un segundo
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Intentamos autenticar con Firebase
+      await signInWithEmailAndPassword(auth, email, password);
       
-      // Redireccionar según el rol (usando window.location en lugar de react-router)
-      if (onLogin) {
-        onLogin();
+      // Obtenemos los datos del usuario y su rol desde Firestore
+      const userInfo = await loginUser(email, password);
+      
+      if (userInfo.success) {
+        onLogin(userInfo);
       } else {
-        window.location.href = '/dashboard';
+        setError(userInfo.error?.toString() || 'Error desconocido al iniciar sesión');
       }
-    } catch (err) {
-      setError('Error al iniciar sesión. Intenta nuevamente.');
+    } catch (err: any) {
+      // Manejar errores de autenticación de Firebase
+      let errorMessage = 'Error al iniciar sesión. Intenta nuevamente.';
+      
+      switch (err.code) {
+        case 'auth/invalid-email':
+          errorMessage = 'El correo electrónico no es válido.';
+          break;
+        case 'auth/user-not-found':
+          errorMessage = 'No existe una cuenta con este correo.';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Contraseña incorrecta.';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Demasiados intentos fallidos. Intenta más tarde.';
+          break;
+      }
+      
+      setError(errorMessage);
       console.error(err);
     } finally {
       setLoading(false);
@@ -40,11 +63,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       {/* Imagen lado izquierdo (50%) */}
       <div className="hidden md:block md:w-1/2 bg-blue-600">
         <div className="h-full flex items-center justify-center p-10">
-          <img 
-            src="/api/placeholder/800/600"
-            alt="Gym Management System" 
-            className="max-w-full h-auto rounded-lg shadow-lg"
-          />
+          <div className="text-white text-center">
+            <h1 className="text-4xl font-bold mb-4">Sistema de Gestión para Gimnasios</h1>
+            <p className="text-xl mb-6">Administra socios, membresías y más</p>
+            <div className="flex justify-center space-x-6">
+              <div className="p-4 bg-white bg-opacity-10 rounded-lg">
+                <Building size={48} className="mx-auto mb-2 text-white" />
+                <p className="font-medium">Administra tu gimnasio</p>
+              </div>
+              <div className="p-4 bg-white bg-opacity-10 rounded-lg">
+                <User size={48} className="mx-auto mb-2 text-white" />
+                <p className="font-medium">Gestiona tus socios</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -89,7 +121,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                   Contraseña
                 </label>
-                <a href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800">
+                <a href="#" className="text-sm text-blue-600 hover:text-blue-800">
                   ¿Olvidaste tu contraseña?
                 </a>
               </div>
@@ -126,9 +158,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               ¿No tienes una cuenta?{' '}
-              <a href="/register" className="text-blue-600 hover:text-blue-800 font-medium">
+              <button 
+                onClick={onRegisterClick}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
                 Registra tu gimnasio
-              </a>
+              </button>
             </p>
           </div>
         </div>

@@ -3,35 +3,63 @@ import {
   Home, Users, CreditCard, Calendar, Settings, 
   ChevronDown, ChevronUp, LogOut, Menu, X, BarChart2
 } from 'lucide-react';
+import { auth } from '../../config/firebase';
+
 
 interface SidebarProps {
   activePage: string;
   onNavigate: (page: string) => void;
+  userRole: 'superadmin' | 'admin' | 'user';
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRole }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <Home size={20} /> },
-    { id: 'members', label: 'Socios', icon: <Users size={20} /> },
-    { id: 'attendance', label: 'Asistencias', icon: <Calendar size={20} /> },
-    { id: 'cashier', label: 'Caja Diaria', icon: <CreditCard size={20} /> },
-    { id: 'reports', label: 'Informes', icon: <BarChart2 size={20} /> } // Cambiado a BarChart2 que está disponible en lucide-react
+  // Lista completa de items del menú
+  const allMenuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: <Home size={20} />, roles: ['superadmin', 'admin', 'user'] },
+    { id: 'members', label: 'Socios', icon: <Users size={20} />, roles: ['superadmin', 'admin', 'user'] },
+    { id: 'attendance', label: 'Asistencias', icon: <Calendar size={20} />, roles: ['superadmin', 'admin', 'user'] },
+    { id: 'cashier', label: 'Caja Diaria', icon: <CreditCard size={20} />, roles: ['superadmin', 'admin'] },
+    { id: 'reports', label: 'Informes', icon: <BarChart2 size={20} />, roles: ['superadmin', 'admin'] }
   ];
   
-  const settingsItems = [
-    { id: 'business', label: 'Perfil de Negocio' },
-    { id: 'memberships', label: 'Membresías' },
-    { id: 'activities', label: 'Actividades' },
-    { id: 'users', label: 'Usuarios' }
+  // Lista completa de items de configuración
+  const allSettingsItems = [
+    { id: 'business', label: 'Perfil de Negocio', roles: ['superadmin', 'admin'] },
+    { id: 'memberships', label: 'Membresías', roles: ['superadmin', 'admin'] },
+    { id: 'activities', label: 'Actividades', roles: ['superadmin', 'admin'] },
+    { id: 'users', label: 'Usuarios', roles: ['superadmin', 'admin'] }
   ];
+  
+  // Filtrar menú según el rol del usuario
+  const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
+  const settingsItems = allSettingsItems.filter(item => item.roles.includes(userRole));
   
   const handleClick = (pageId: string) => {
     onNavigate(pageId);
     if (window.innerWidth < 768) {
       setIsOpen(false);
+    }
+  };
+  
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      // La redirección ocurrirá automáticamente gracias al listener en App.tsx
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+  };
+  
+  // Obtener el nombre del rol para mostrar
+  const getRoleName = () => {
+    switch (userRole) {
+      case 'superadmin': return 'Administrador';
+      case 'admin': return 'Dueño';
+      case 'user': return 'Empleado';
+      default: return '';
     }
   };
   
@@ -65,6 +93,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate }) => {
           {/* Logo y nombre del gimnasio */}
           <div className="p-4 border-b">
             <h2 className="text-xl font-bold text-blue-700">Mi Gimnasio</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Rol: {getRoleName()}
+            </p>
           </div>
           
           {/* Navegación principal */}
@@ -84,47 +115,49 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate }) => {
                 </li>
               ))}
               
-              {/* Configuración con submenú */}
-              <li>
-                <button
-                  onClick={() => setSettingsOpen(!settingsOpen)}
-                  className={`w-full flex items-center justify-between py-3 px-4 hover:bg-gray-100 ${
-                    settingsItems.some(item => activePage === item.id) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                  }`}
-                >
-                  <div className="flex items-center">
-                    <span className="mr-3"><Settings size={20} /></span>
-                    <span>Configuración</span>
-                  </div>
-                  <span>
-                    {settingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </span>
-                </button>
-                
-                {settingsOpen && (
-                  <ul className="bg-gray-50 py-2">
-                    {settingsItems.map(item => (
-                      <li key={item.id}>
-                        <button
-                          onClick={() => handleClick(item.id)}
-                          className={`w-full flex items-center py-2 px-12 hover:bg-gray-100 ${
-                            activePage === item.id ? 'text-blue-700 font-medium' : 'text-gray-700'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
+              {/* Configuración con submenú - solo mostrar si hay elementos */}
+              {settingsItems.length > 0 && (
+                <li>
+                  <button
+                    onClick={() => setSettingsOpen(!settingsOpen)}
+                    className={`w-full flex items-center justify-between py-3 px-4 hover:bg-gray-100 ${
+                      settingsItems.some(item => activePage === item.id) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center">
+                      <span className="mr-3"><Settings size={20} /></span>
+                      <span>Configuración</span>
+                    </div>
+                    <span>
+                      {settingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </span>
+                  </button>
+                  
+                  {settingsOpen && (
+                    <ul className="bg-gray-50 py-2">
+                      {settingsItems.map(item => (
+                        <li key={item.id}>
+                          <button
+                            onClick={() => handleClick(item.id)}
+                            className={`w-full flex items-center py-2 px-12 hover:bg-gray-100 ${
+                              activePage === item.id ? 'text-blue-700 font-medium' : 'text-gray-700'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )}
             </ul>
           </nav>
           
           {/* Footer con cerrar sesión */}
           <div className="border-t p-4">
             <button
-              onClick={() => {/* Lógica para cerrar sesión */}}
+              onClick={handleLogout}
               className="w-full flex items-center py-2 px-4 text-gray-700 hover:bg-gray-100 rounded-md"
             >
               <LogOut size={20} className="mr-3" />

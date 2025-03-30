@@ -1,20 +1,14 @@
-import React, { useState } from 'react';
-import { Building2, Phone, Mail, Globe, Instagram, Facebook, Save, Upload } from 'lucide-react';
-
-interface BusinessProfileFormData {
-  name: string;
-  address: string;
-  phone: string;
-  cuit: string;
-  email: string;
-  website: string;
-  socialMedia: string;
-  logo: File | null;
-}
+// src/pages/settings/BusinessProfile.tsx
+import React, { useState, useEffect } from 'react';
+import { Building2, Phone, Mail, Globe, Instagram, Facebook, Save, Upload, AlertCircle, CheckCircle } from 'lucide-react';
+import { getGymInfo, updateBusinessProfile, BusinessProfile as BusinessProfileType, gymToBusinessProfile, ensureGymFields } from '../../services/gym.service';
+import useAuth from '../../hooks/useAuth';
 
 const BusinessProfile: React.FC = () => {
-  const [formData, setFormData] = useState<BusinessProfileFormData>({
-    name: 'Muscle Man',
+  const { gymData, currentUser } = useAuth();
+  
+  const [formData, setFormData] = useState<BusinessProfileType>({
+    name: '',
     address: '',
     phone: '',
     cuit: '',
@@ -24,9 +18,49 @@ const BusinessProfile: React.FC = () => {
     logo: null
   });
   
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [success, setSuccess] = useState<boolean>(false);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
+  
+  // Cargar datos del gimnasio al montar el componente
+  useEffect(() => {
+    const loadGymData = async () => {
+      if (!gymData?.id) {
+        setDataLoading(false);
+        return;
+      }
+      
+      setDataLoading(true);
+      
+      try {
+        // Asegurar que todos los campos necesarios existen
+        await ensureGymFields(gymData.id);
+        
+        // Cargar información del gimnasio
+        const gym = await getGymInfo(gymData.id);
+        
+        if (gym) {
+          const businessProfile = gymToBusinessProfile(gym);
+          setFormData(businessProfile);
+          
+          // Si hay un logo, establecer la vista previa
+          if (gym.logo) {
+            setLogoPreview(gym.logo);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading gym data:', error);
+        setError('Error al cargar datos del gimnasio');
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    
+    loadGymData();
+  }, [gymData?.id]);
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -39,10 +73,14 @@ const BusinessProfile: React.FC = () => {
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setFormData({
-        ...formData,
-        logo: file
-      });
+      
+      // Validar tamaño máximo (2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        setError('El archivo de imagen no debe superar los 2MB');
+        return;
+      }
+      
+      setLogoFile(file);
       
       // Crear preview
       const reader = new FileReader();
@@ -50,31 +88,101 @@ const BusinessProfile: React.FC = () => {
         setLogoPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+      
+      // Limpiar error si existe
+      if (error) {
+        setError('');
+      }
     }
   };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!gymData?.id) {
+      setError('No se encontró información del gimnasio');
+      return;
+    }
+    
     setLoading(true);
     setSuccess(false);
+    setError('');
     
-    // Simulamos una operación de guardado exitosa
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setSuccess(true);
-    setLoading(false);
-    
-    // Ocultar mensaje de éxito después de 3 segundos
-    setTimeout(() => {
-      setSuccess(false);
-    }, 3000);
+    try {
+      console.log('Actualizando perfil con datos:', formData);
+      
+      // Primero, asegurarnos de que los campos existen
+      await ensureGymFields(gymData.id);
+      
+      // Luego actualizar el perfil
+      const result = await updateBusinessProfile(gymData.id, formData, logoFile);
+      
+      if (result) {
+        setSuccess(true);
+        
+        // Volver a cargar los datos actualizados
+        const updatedGym = await getGymInfo(gymData.id);
+        if (updatedGym) {
+          const updatedProfile = gymToBusinessProfile(updatedGym);
+          setFormData(updatedProfile);
+          
+          if (updatedGym.logo) {
+            setLogoPreview(updatedGym.logo);
+          }
+        }
+        
+        // Resetear el archivo del logo después de subir
+        setLogoFile(null);
+        
+        // Ocultar mensaje de éxito después de 3 segundos
+        setTimeout(() => {
+          setSuccess(false);
+        }, 3000);
+      } else {
+        throw new Error('No se pudo actualizar el perfil');
+      }
+    } catch (err: any) {
+      console.error('Error updating business profile:', err);
+      
+      // Mensaje de error específico para problemas con Cloudinary
+      if (err.message && err.message.includes('Cloudinary')) {
+        setError('Error al subir el logo. Por favor, inténtalo de nuevo o usa una imagen diferente.');
+      } else {
+        setError(err.message || 'Error al actualizar el perfil del negocio');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
+  
+  if (dataLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <div className="inline-block h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <span className="ml-2 text-gray-600">Cargando datos del gimnasio...</span>
+      </div>
+    );
+  }
   
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">Perfil del Negocio</h1>
       
       <div className="bg-white rounded-lg shadow-md p-6">
+        {error && (
+          <div className="mb-6 p-3 bg-red-100 text-red-700 rounded-md flex items-center">
+            <AlertCircle size={18} className="mr-2" />
+            {error}
+          </div>
+        )}
+        
+        {success && (
+          <div className="mb-6 p-3 bg-green-100 text-green-700 rounded-md flex items-center">
+            <CheckCircle size={18} className="mr-2" />
+            Perfil actualizado correctamente
+          </div>
+        )}
+        
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Nombre del Gimnasio */}

@@ -1,17 +1,51 @@
 // src/contexts/AuthContext.tsx
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth'; // Importación corregida
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { getDoc, doc, updateDoc, serverTimestamp, collection, getDocs, query, where, limit } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
-import { User as UserType } from '../types/auth.types';
-import { Gym } from '../types/auth.types';
 
 // Tipos para nuestro contexto
+interface UserData {
+  id: string;
+  email: string;
+  name: string;
+  role: 'superadmin' | 'admin' | 'user';
+  phone?: string;
+  createdAt: any; // Timestamp de Firebase
+  lastLogin?: any; // Timestamp de Firebase
+  isActive: boolean;
+}
+
+export interface GymData {
+  id: string;
+  name: string;
+  owner: string;
+  email: string;
+  phone: string;
+  cuit: string;
+  status: 'active' | 'trial' | 'suspended';
+  registrationDate: any;
+  trialEndsAt?: any;
+  subscriptionData?: {
+    plan: string;
+    startDate: any;
+    endDate: any;
+    price: number;
+    paymentMethod: string;
+    lastPayment: any;
+    renewalRequested: boolean;
+  };
+  address?: string;
+  website?: string;
+  socialMedia?: string;
+  logo?: string;
+}
+
 interface AuthContextType {
   currentUser: User | null;
-  userData: UserType | null;
-  gymData: Gym | null;
+  userData: UserData | null;
+  gymData: GymData | null;
   userRole: string | null;
   loading: boolean;
   isSuperAdmin: boolean;
@@ -29,8 +63,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Crear el proveedor del contexto
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userData, setUserData] = useState<UserType | null>(null);
-  const [gymData, setGymData] = useState<Gym | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [gymData, setGymData] = useState<GymData | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +77,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Primero verificamos si es un superadmin
           const adminDoc = await getDoc(doc(db, 'admins', user.uid));
           if (adminDoc.exists()) {
-            setUserData({ ...adminDoc.data(), id: user.uid } as UserType);
+            setUserData({ 
+              ...adminDoc.data(), 
+              id: user.uid,
+              role: 'superadmin',
+              isActive: true
+            } as UserData);
             setUserRole('superadmin');
             setGymData(null);
             setLoading(false);
@@ -53,12 +92,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Luego verificamos si es propietario de gimnasio
           const gymDoc = await getDoc(doc(db, 'gyms', user.uid));
           if (gymDoc.exists()) {
-            setGymData({ ...gymDoc.data(), id: user.uid } as Gym);
+            setGymData({ ...gymDoc.data(), id: user.uid } as GymData);
             
             // Obtener datos del usuario desde la subcolección users
             const userDoc = await getDoc(doc(db, `gyms/${user.uid}/users`, user.uid));
             if (userDoc.exists()) {
-              setUserData({ ...userDoc.data(), id: user.uid } as UserType);
+              setUserData({ ...userDoc.data(), id: user.uid } as UserData);
               setUserRole(userDoc.data().role);
               
               // Actualizar último login
@@ -82,8 +121,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const userDoc = await getDoc(userDocRef);
             
             if (userDoc.exists()) {
-              setUserData({ ...userDoc.data(), id: user.uid } as UserType);
-              setGymData({ ...gym.data(), id: gym.id } as Gym);
+              setUserData({ ...userDoc.data(), id: user.uid } as UserData);
+              setGymData({ ...gym.data(), id: gym.id } as GymData);
               setUserRole(userDoc.data().role);
               
               // Actualizar último login
@@ -101,6 +140,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUserData(null);
           setGymData(null);
           setUserRole(null);
+          
+          // En un caso real, podríamos cerrar la sesión automáticamente
+          // await auth.signOut();
         } catch (error) {
           console.error('Error al cargar datos de usuario:', error);
         }
@@ -124,7 +166,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     if (!gymData.trialEndsAt) return false;
     
-    const trialEndDate = gymData.trialEndsAt.toDate();
+    const trialEndDate = gymData.trialEndsAt.toDate ? gymData.trialEndsAt.toDate() : new Date(gymData.trialEndsAt);
     const currentDate = new Date();
     
     return trialEndDate > currentDate;
@@ -138,7 +180,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     if (!gymData.subscriptionData?.endDate) return false;
     
-    const endDate = gymData.subscriptionData.endDate.toDate();
+    const endDate = gymData.subscriptionData.endDate.toDate ? 
+                   gymData.subscriptionData.endDate.toDate() : 
+                   new Date(gymData.subscriptionData.endDate);
     const currentDate = new Date();
     
     return endDate > currentDate;
@@ -164,15 +208,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       {!loading && children}
     </AuthContext.Provider>
   );
-};
-
-// Hook personalizado para usar el contexto
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
-  }
-  return context;
 };
 
 export default AuthContext;
