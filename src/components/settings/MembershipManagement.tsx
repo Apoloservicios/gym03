@@ -1,12 +1,17 @@
 // src/components/settings/MembershipManagement.tsx
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash, ChevronDown, ChevronUp, DollarSign, Calendar, Clock, Check, X, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash, ChevronDown, ChevronUp, DollarSign, Calendar, Clock, Check, X, AlertCircle, Star } from 'lucide-react';
 import { Membership, Activity, MembershipFormData, FormErrors } from '../../types/membership.types';
+import useAuth from '../../hooks/useAuth';
+import { getMemberships, createMembership, updateMembership, deleteMembership, togglePopularMembership } from '../../services/membership.service';
+import { getActiveActivities } from '../../services/activity.service';
+import { formatCurrency } from '../../utils/formatting.utils';
+import { getActivities } from '../../services/activity.service';
 
-interface MembershipManagementProps {}
-
-const MembershipManagement: React.FC<MembershipManagementProps> = () => {
+const MembershipManagement: React.FC = () => {
+  const { gymData } = useAuth();
+  
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -22,105 +27,56 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
     description: '',
     cost: '',
     duration: 30,
-    maxAttendances: ''
+    maxAttendances: '',
+    isActive: true
   });
   
-  // Validación de formulario
   const [errors, setErrors] = useState<FormErrors>({});
+  const [success, setSuccess] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
   
-  // Cargar datos de membresías y actividades
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      
-      try {
-        // Simulamos carga de datos
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Actividades de ejemplo
-        const sampleActivities: Activity[] = [
-          { id: 'act1', name: 'Musculación', description: 'Acceso a sala de pesas y máquinas' },
-          { id: 'act2', name: 'Pilates', description: 'Clases de pilates reformer' },
-          { id: 'act3', name: 'Yoga', description: 'Clases de yoga y meditación' },
-          { id: 'act4', name: 'Zumba', description: 'Clases de baile y ejercicio' },
-          { id: 'act5', name: 'Crossfit', description: 'Entrenamiento funcional de alta intensidad' }
-        ];
-        
-        // Membresías de ejemplo
-        const sampleMemberships: Membership[] = [
-          { 
-            id: 'mem1', 
-            activityId: 'act1',
-            activityName: 'Musculación',
-            name: 'Musculación Mensual',
-            description: 'Acceso ilimitado a sala de musculación durante 30 días',
-            cost: 10000,
-            duration: 30,
-            maxAttendances: 30,
-            isPopular: true,
-            activeMembers: 42
-          },
-          { 
-            id: 'mem2', 
-            activityId: 'act2',
-            activityName: 'Pilates', 
-            name: 'Pilates 8 clases',
-            description: 'Pack de 8 clases de pilates. Validez 30 días',
-            cost: 14000, 
-            duration: 30,
-            maxAttendances: 8,
-            isPopular: false,
-            activeMembers: 15
-          },
-          { 
-            id: 'mem3', 
-            activityId: 'act3',
-            activityName: 'Yoga', 
-            name: 'Yoga 4 clases',
-            description: 'Pack de 4 clases de yoga. Validez 30 días',
-            cost: 8000, 
-            duration: 30,
-            maxAttendances: 4,
-            isPopular: false,
-            activeMembers: 8
-          },
-          { 
-            id: 'mem4', 
-            activityId: 'act1',
-            activityName: 'Musculación', 
-            name: 'Musculación Trimestral',
-            description: 'Acceso ilimitado a sala de musculación durante 90 días',
-            cost: 25000, 
-            duration: 90,
-            maxAttendances: 90,
-            isPopular: false,
-            activeMembers: 23
-          },
-          { 
-            id: 'mem5', 
-            activityId: 'act5',
-            activityName: 'Crossfit', 
-            name: 'Crossfit 12 clases',
-            description: 'Pack de 12 clases de crossfit. Validez 30 días',
-            cost: 18000, 
-            duration: 30,
-            maxAttendances: 12,
-            isPopular: true,
-            activeMembers: 31
-          }
-        ];
-        
-        setActivities(sampleActivities);
-        setMemberships(sampleMemberships);
-      } catch (error) {
-        console.error('Error al cargar datos:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Cargar membresías y actividades al montar el componente
+ // Cargar membresías y actividades al montar el componente
+ useEffect(() => {
+  const fetchData = async () => {
+    if (!gymData?.id) {
+      console.log("No hay gymData.id disponible");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    console.log("Iniciando carga de datos para el gimnasio:", gymData.id);
     
-    fetchData();
-  }, []);
+    try {
+      // Cargar membresías desde Firebase
+      console.log("Intentando cargar membresías...");
+      const membershipsData = await getMemberships(gymData.id);
+      console.log("Membresías cargadas:", membershipsData.length);
+      setMemberships(membershipsData);
+      
+      // Cargar actividades activas desde Firebase
+      console.log("Intentando cargar actividades...");
+      const activitiesData = await getActiveActivities(gymData.id);
+      console.log("Actividades cargadas:", activitiesData);
+      setActivities(activitiesData);
+      
+      if (activitiesData.length === 0) {
+        console.log("No se encontraron actividades activas. Probando cargar todas las actividades...");
+        // Para propósitos de depuración, intentemos cargar todas las actividades
+        const allActivities = await getActivities(gymData.id);
+        console.log("Todas las actividades:", allActivities);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setError('Error al cargar datos. Por favor, intenta de nuevo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  fetchData();
+}, [gymData?.id]);
   
   // Manejar cambios en el formulario
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -135,44 +91,52 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
     });
     
     // Limpiar error del campo cuando se edita
-    if (errors[name as keyof FormErrors]) {
-      setErrors({
-        ...errors,
-        [name]: undefined
-      });
+    if (error) {
+      setError('');
     }
+  };
+  
+  // Manejar cambio en el toggle de estado activo
+  const handleToggleActive = () => {
+    setFormData(prev => ({
+      ...prev,
+      isActive: !prev.isActive
+    }));
   };
   
   // Validar formulario
   const validateForm = () => {
-    const newErrors: FormErrors = {};
-    
     if (!formData.activityId) {
-      newErrors.activityId = 'Debe seleccionar una actividad';
+      setError('Debe seleccionar una actividad');
+      return false;
     }
     
     if (!formData.name.trim()) {
-      newErrors.name = 'El nombre es obligatorio';
+      setError('El nombre es obligatorio');
+      return false;
     }
     
     if (!formData.description.trim()) {
-      newErrors.description = 'La descripción es obligatoria';
+      setError('La descripción es obligatoria');
+      return false;
     }
     
     if (!formData.cost || Number(formData.cost) <= 0) {
-      newErrors.cost = 'El costo debe ser mayor a 0';
+      setError('El costo debe ser mayor a 0');
+      return false;
     }
     
     if (!formData.duration || formData.duration <= 0) {
-      newErrors.duration = 'La duración debe ser mayor a 0';
+      setError('La duración debe ser mayor a 0');
+      return false;
     }
     
     if (!formData.maxAttendances || Number(formData.maxAttendances) <= 0) {
-      newErrors.maxAttendances = 'Las asistencias máximas deben ser mayor a 0';
+      setError('Las asistencias máximas deben ser mayor a 0');
+      return false;
     }
     
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return true;
   };
   
   // Abrir modal para nueva membresía
@@ -183,10 +147,13 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
       description: '',
       cost: '',
       duration: 30,
-      maxAttendances: ''
+      maxAttendances: '',
+      isActive: true
     });
     setIsEditing(false);
     setIsModalOpen(true);
+    setError('');
+    setSuccess(false);
   };
   
   // Abrir modal para editar membresía
@@ -197,11 +164,14 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
       description: membership.description,
       cost: String(membership.cost),
       duration: membership.duration,
-      maxAttendances: String(membership.maxAttendances)
+      maxAttendances: String(membership.maxAttendances),
+      isActive: membership.isActive !== undefined ? membership.isActive : true
     });
     setCurrentMembership(membership);
     setIsEditing(true);
     setIsModalOpen(true);
+    setError('');
+    setSuccess(false);
   };
   
   // Abrir modal para confirmar eliminación
@@ -211,85 +181,110 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
   };
   
   // Confirmar eliminación
-  const confirmDelete = () => {
-    if (!currentMembership) return;
+  const confirmDelete = async () => {
+    if (!gymData?.id || !currentMembership) {
+      return;
+    }
     
-    // Aquí iría la lógica para eliminar de la base de datos
-    setMemberships(prevMemberships => 
-      prevMemberships.filter(m => m.id !== currentMembership.id)
-    );
-    setIsDeleteModalOpen(false);
-    setCurrentMembership(null);
+    try {
+      const result = await deleteMembership(gymData.id, currentMembership.id);
+      
+      if (result) {
+        // Eliminar de la lista local
+        setMemberships(prev => prev.filter(m => m.id !== currentMembership.id));
+        setIsDeleteModalOpen(false);
+        setCurrentMembership(null);
+      }
+    } catch (err: any) {
+      console.error('Error deleting membership:', err);
+      setError(err.message || 'Error al eliminar la membresía');
+    }
   };
   
   // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!gymData?.id) {
+      setError('No se encontró información del gimnasio');
+      return;
+    }
+    
     if (!validateForm()) {
       return;
     }
     
-    // Aquí iría la lógica para guardar en la base de datos
+    setError('');
+    setSuccess(false);
+    
     try {
-      // Simulamos operación
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Preparar datos para guardar
+      const membershipData = {
+        activityId: formData.activityId,
+        activityName: activities.find(a => a.id === formData.activityId)?.name || '',
+        name: formData.name,
+        description: formData.description,
+        cost: Number(formData.cost),
+        duration: formData.duration,
+        maxAttendances: Number(formData.maxAttendances),
+        isActive: formData.isActive,
+        isPopular: currentMembership?.isPopular || false,
+        activeMembers: currentMembership?.activeMembers || 0
+      };
       
       if (isEditing && currentMembership) {
         // Actualizar membresía existente
-        setMemberships(prevMemberships => 
-          prevMemberships.map(m => 
-            m.id === currentMembership.id 
-              ? { 
-                  ...m, 
-                  activityId: formData.activityId,
-                  activityName: activities.find(a => a.id === formData.activityId)?.name || '',
-                  name: formData.name,
-                  description: formData.description,
-                  cost: Number(formData.cost),
-                  duration: formData.duration,
-                  maxAttendances: Number(formData.maxAttendances)
-                } 
-              : m
-          )
-        );
+        const result = await updateMembership(gymData.id, currentMembership.id, membershipData);
+        
+        if (result) {
+          // Actualizar en la lista local
+          setMemberships(prev => 
+            prev.map(m => m.id === currentMembership.id ? { ...m, ...membershipData } : m)
+          );
+        }
       } else {
         // Crear nueva membresía
-        const newMembership: Membership = {
-          id: `mem${Date.now()}`,
-          activityId: formData.activityId,
-          activityName: activities.find(a => a.id === formData.activityId)?.name || '',
-          name: formData.name,
-          description: formData.description,
-          cost: Number(formData.cost),
-          duration: formData.duration,
-          maxAttendances: Number(formData.maxAttendances),
-          isPopular: false,
-          activeMembers: 0
-        };
+        const newMembership = await createMembership(gymData.id, membershipData);
         
-        setMemberships(prevMemberships => [...prevMemberships, newMembership]);
+        // Añadir a la lista local
+        setMemberships(prev => [...prev, newMembership]);
       }
       
-      setIsModalOpen(false);
-      setCurrentMembership(null);
-    } catch (error) {
-      console.error('Error al guardar membresía:', error);
-      setErrors({
-        ...errors,
-        form: 'Ocurrió un error al guardar. Intente nuevamente.'
-      });
+      setSuccess(true);
+      
+      // Cerrar modal después de un breve retraso
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setSuccess(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Error saving membership:', err);
+      setError(err.message || 'Error al guardar la membresía');
     }
   };
   
-  // Formatear monto
-  const formatAmount = (amount: number): string => {
-    return amount.toLocaleString('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    });
+  // Manejar estado de "popular"
+  const handleTogglePopular = async (membership: Membership) => {
+    if (!gymData?.id) return;
+    
+    try {
+      const newPopularState = !membership.isPopular;
+      
+      const result = await togglePopularMembership(
+        gymData.id, 
+        membership.id, 
+        newPopularState
+      );
+      
+      if (result) {
+        // Actualizar en la lista local
+        setMemberships(prev => 
+          prev.map(m => m.id === membership.id ? { ...m, isPopular: newPopularState } : m)
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling popular status:', error);
+    }
   };
   
   // Manejar expansión/colapso de detalles
@@ -349,20 +344,35 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                         Popular
                       </span>
                     )}
+                    {membership.isActive === false && (
+                      <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-800 text-xs font-medium rounded-full">
+                        Inactiva
+                      </span>
+                    )}
                   </div>
                   <p className="text-gray-600 mt-1">{membership.activityName}</p>
                 </div>
                 
                 <div className="mt-3 sm:mt-0 flex flex-col sm:flex-row sm:items-center sm:space-x-4">
-                  <div className="text-xl font-bold text-gray-800">{formatAmount(membership.cost)}</div>
+                  <div className="text-xl font-bold text-gray-800">{formatCurrency(membership.cost)}</div>
                   
                   <div className="mt-2 sm:mt-0 flex items-center">
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
+                        handleTogglePopular(membership);
+                      }}
+                      title={membership.isPopular ? "Quitar marca de popular" : "Marcar como popular"}
+                      className={`p-1 ${membership.isPopular ? 'text-yellow-500 hover:text-yellow-700' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                      <Star size={18} />
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleEditMembership(membership);
                       }}
-                      className="text-blue-600 hover:text-blue-800 p-1"
+                      className="ml-2 text-blue-600 hover:text-blue-800 p-1"
                     >
                       <Edit size={18} />
                     </button>
@@ -410,12 +420,12 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                         
                         <div className="bg-white p-3 rounded-md border flex-1 min-w-[120px]">
                           <p className="text-sm text-gray-600">Ingresos mensuales</p>
-                          <p className="text-xl font-bold text-gray-800 mt-1">{formatAmount(membership.cost * 30)}</p>
+                          <p className="text-xl font-bold text-gray-800 mt-1">{formatCurrency(membership.cost * membership.activeMembers)}</p>
                         </div>
                         
                         <div className="bg-white p-3 rounded-md border flex-1 min-w-[120px]">
                           <p className="text-sm text-gray-600">Costo por día</p>
-                          <p className="text-xl font-bold text-gray-800 mt-1">{formatAmount(membership.cost / membership.duration)}</p>
+                          <p className="text-xl font-bold text-gray-800 mt-1">{formatCurrency(membership.cost / membership.duration)}</p>
                         </div>
                       </div>
                     </div>
@@ -433,10 +443,17 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
           <div className="bg-white rounded-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-semibold mb-4">{isEditing ? 'Editar Membresía' : 'Nueva Membresía'}</h2>
             
-            {errors.form && (
+            {error && (
               <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md flex items-center">
                 <AlertCircle size={18} className="mr-2" />
-                {errors.form}
+                {error}
+              </div>
+            )}
+            
+            {success && (
+              <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md flex items-center">
+                <Check size={18} className="mr-2" />
+                {isEditing ? 'Membresía actualizada correctamente' : 'Membresía creada correctamente'}
               </div>
             )}
             
@@ -452,7 +469,7 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                     name="activityId"
                     value={formData.activityId}
                     onChange={handleChange}
-                    className={`w-full px-4 py-2 border ${errors.activityId ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Seleccionar actividad</option>
                     {activities.map(activity => (
@@ -461,9 +478,6 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                       </option>
                     ))}
                   </select>
-                  {errors.activityId && (
-                    <p className="mt-1 text-sm text-red-600">{errors.activityId}</p>
-                  )}
                 </div>
                 
                 {/* Nombre */}
@@ -477,12 +491,9 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className={`w-full px-4 py-2 border ${errors.name ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Ej: Musculación Mensual"
                   />
-                  {errors.name && (
-                    <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-                  )}
                 </div>
                 
                 {/* Descripción */}
@@ -496,12 +507,40 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                     value={formData.description}
                     onChange={handleChange}
                     rows={3}
-                    className={`w-full px-4 py-2 border ${errors.description ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Describe los beneficios y condiciones"
                   />
-                  {errors.description && (
-                    <p className="mt-1 text-sm text-red-600">{errors.description}</p>
-                  )}
+                </div>
+                
+                {/* Estado (activo/inactivo) */}
+                <div>
+                  <div className="flex items-center">
+                    <button 
+                      type="button"
+                      onClick={handleToggleActive}
+                      className="flex items-center focus:outline-none"
+                    >
+                      {formData.isActive ? (
+                        <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                          <div className="block w-10 h-6 rounded-full bg-blue-600"></div>
+                          <div className="absolute right-1 top-1 w-4 h-4 rounded-full bg-white"></div>
+                        </div>
+                      ) : (
+                        <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                          <div className="block w-10 h-6 rounded-full bg-gray-300"></div>
+                          <div className="absolute left-1 top-1 w-4 h-4 rounded-full bg-white"></div>
+                        </div>
+                      )}
+                      <span className="font-medium ml-2">
+                        {formData.isActive ? 'Membresía Activa' : 'Membresía Inactiva'}
+                      </span>
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1 ml-12">
+                    {formData.isActive 
+                      ? 'La membresía estará disponible para asignar a socios' 
+                      : 'La membresía no estará disponible para asignar a nuevos socios'}
+                  </p>
                 </div>
                 
                 {/* Costo */}
@@ -519,15 +558,12 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                       name="cost"
                       value={formData.cost}
                       onChange={handleChange}
-                      className={`pl-10 w-full px-4 py-2 border ${errors.cost ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                      className="pl-10 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0"
                       min="0"
                       step="100"
                     />
                   </div>
-                  {errors.cost && (
-                    <p className="mt-1 text-sm text-red-600">{errors.cost}</p>
-                  )}
                 </div>
                 
                 {/* Duración y Asistencias */}
@@ -546,14 +582,11 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                         name="duration"
                         value={formData.duration}
                         onChange={handleChange}
-                        className={`pl-10 w-full px-4 py-2 border ${errors.duration ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                        className="pl-10 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="30"
                         min="1"
                       />
                     </div>
-                    {errors.duration && (
-                      <p className="mt-1 text-sm text-red-600">{errors.duration}</p>
-                    )}
                   </div>
                   
                   <div>
@@ -566,13 +599,10 @@ const MembershipManagement: React.FC<MembershipManagementProps> = () => {
                       name="maxAttendances"
                       value={formData.maxAttendances}
                       onChange={handleChange}
-                      className={`w-full px-4 py-2 border ${errors.maxAttendances ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="30"
                       min="1"
                     />
-                    {errors.maxAttendances && (
-                      <p className="mt-1 text-sm text-red-600">{errors.maxAttendances}</p>
-                    )}
                   </div>
                 </div>
               </div>

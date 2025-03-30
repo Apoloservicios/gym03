@@ -47,30 +47,42 @@ import {
   };
   
   // Obtener todas las actividades activas
-  export const getActiveActivities = async (gymId: string): Promise<Activity[]> => {
-    try {
-      const activitiesRef = collection(db, `gyms/${gymId}/activities`);
-      const q = query(
-        activitiesRef,
-        where('isActive', '==', true),
-        orderBy('name')
-      );
-      const querySnapshot = await getDocs(q);
-      
-      const activities: Activity[] = [];
-      querySnapshot.forEach((doc) => {
-        activities.push({
-          id: doc.id,
-          ...doc.data()
-        } as Activity);
-      });
-      
-      return activities;
-    } catch (error) {
-      console.error('Error getting active activities:', error);
-      throw error;
+ // Obtener todas las actividades activas
+export const getActiveActivities = async (gymId: string): Promise<Activity[]> => {
+  try {
+    const activitiesRef = collection(db, `gyms/${gymId}/activities`);
+    
+    // Primero intentamos con un filtro para actividades activas
+    let q = query(
+      activitiesRef,
+      where('isActive', '==', true),
+      orderBy('name')
+    );
+    
+    let querySnapshot = await getDocs(q);
+    
+    // Si no hay resultados, probamos obteniendo todas las actividades
+    if (querySnapshot.empty) {
+      console.log("No se encontraron actividades activas, obteniendo todas las actividades");
+      q = query(activitiesRef, orderBy('name'));
+      querySnapshot = await getDocs(q);
     }
-  };
+    
+    const activities: Activity[] = [];
+    querySnapshot.forEach((doc) => {
+      activities.push({
+        id: doc.id,
+        ...doc.data()
+      } as Activity);
+    });
+    
+    console.log("Actividades encontradas:", activities.length);
+    return activities;
+  } catch (error) {
+    console.error('Error getting active activities:', error);
+    throw error;
+  }
+};
   
   // Obtener una actividad por su ID
   export const getActivity = async (gymId: string, activityId: string): Promise<Activity | null> => {

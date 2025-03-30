@@ -10,13 +10,17 @@ export interface Membership {
   duration: number;
   maxAttendances: number;
   isPopular: boolean;
+  isActive: boolean;
   activeMembers: number;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface Activity {
   id: string;
   name: string;
   description: string;
+  isActive?: boolean;
 }
 
 export interface MembershipFormData {
@@ -26,6 +30,7 @@ export interface MembershipFormData {
   cost: number | string;
   duration: number;
   maxAttendances: number | string;
+  isActive: boolean;
 }
 
 export interface FormErrors {
@@ -50,13 +55,15 @@ const membershipTypes = {
     duration: 30,
     maxAttendances: 0,
     isPopular: false,
+    isActive: true,
     activeMembers: 0
   }),
   
   createEmptyActivity: (): Activity => ({
     id: '',
     name: '',
-    description: ''
+    description: '',
+    isActive: true
   }),
   
   createEmptyMembershipFormData: (): MembershipFormData => ({
@@ -65,7 +72,8 @@ const membershipTypes = {
     description: '',
     cost: '',
     duration: 30,
-    maxAttendances: ''
+    maxAttendances: '',
+    isActive: true
   }),
   
   createEmptyFormErrors: (): FormErrors => ({})
