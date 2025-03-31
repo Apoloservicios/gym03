@@ -8,6 +8,7 @@ import { getMemberMemberships } from '../../services/member.service';
 import { getDailyCashForDateRange, getTransactionsSummary } from '../../services/dailyCash.service';
 import { formatCurrency } from '../../utils/formatting.utils';
 import { Member } from '../../types/member.types';
+import { MembershipAssignment } from '../../types/member.types';
 
 interface DashboardCardProps {
   title: string;
@@ -43,6 +44,7 @@ const Dashboard: React.FC = () => {
   const [memberData, setMemberData] = useState<any[]>([]);
   const [incomeData, setIncomeData] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [startTime] = useState<number>(new Date().getTime());
   
   // Obtener la fecha actual y calcular fechas para filtrar los datos
   const currentDate = new Date();
@@ -50,6 +52,13 @@ const Dashboard: React.FC = () => {
   const startOfPrevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
   const formattedStartDate = startOfPrevMonth.toISOString().split('T')[0];
   const formattedEndDate = currentDate.toISOString().split('T')[0];
+
+  // Memebresias
+  const [membershipsToExpire, setMembershipsToExpire] = useState<{
+    member: Member,
+    membership: MembershipAssignment
+  }[]>([]);
+  const [loadingMemberships, setLoadingMemberships] = useState<boolean>(true);
 
   // Cargar datos
   useEffect(() => {
@@ -118,6 +127,88 @@ const Dashboard: React.FC = () => {
     
     loadDashboardData();
   }, [gymData?.id, userRole]);
+
+
+  const loadUpcomingExpirations = async () => {
+    if (!gymData?.id) {
+      setLoadingMemberships(false);
+      return;
+    }
+    
+    try {
+      setLoadingMemberships(true);
+      
+      // Calcular la fecha límite (15 días a partir de hoy)
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + 15);
+      
+      // Obtener todos los miembros activos
+      const activeMembers = members.filter(m => m.status === 'active');
+      
+      // Si no hay miembros activos, terminamos
+      if (activeMembers.length === 0) {
+        setMembershipsToExpire([]);
+        setLoadingMemberships(false);
+        return;
+      }
+      
+      const expiringMemberships: {
+        member: Member,
+        membership: MembershipAssignment
+      }[] = [];
+      
+      // Para cada miembro activo, verificar sus membresías
+      for (const member of activeMembers) {
+        try {
+          const memberMemberships = await getMemberMemberships(gymData.id, member.id);
+          
+          // Filtrar solo las membresías activas que vencen en los próximos 15 días
+          const expiring = memberMemberships.filter(membership => {
+            if (membership.status !== 'active') return false;
+            
+            const endDate = new Date(membership.endDate);
+            return endDate >= today && endDate <= futureDate;
+          });
+          
+          // Agregar a la lista de próximas a vencer
+          expiring.forEach(membership => {
+            expiringMemberships.push({
+              member,
+              membership
+            });
+          });
+        } catch (memberError) {
+          console.error(`Error fetching memberships for member ${member.id}:`, memberError);
+          // Continuamos con el siguiente miembro aunque haya un error
+        }
+      }
+      
+      // Ordenar por fecha de vencimiento más cercana
+      expiringMemberships.sort((a, b) => {
+        return new Date(a.membership.endDate).getTime() - new Date(b.membership.endDate).getTime();
+      });
+      
+      setMembershipsToExpire(expiringMemberships);
+    } catch (error) {
+      console.error('Error loading upcoming expirations:', error);
+      setMembershipsToExpire([]);
+    } finally {
+      // Asegurarnos de que siempre se ejecuta, incluso si hay errores
+      setLoadingMemberships(false);
+    }
+  };
+
+  useEffect(() => {
+    if (members.length > 0) {
+      loadUpcomingExpirations();
+    } else {
+      // Si no hay miembros, establecer estado vacío y finalizar carga
+      setMembershipsToExpire([]);
+      setLoadingMemberships(false);
+    }
+  }, [members, gymData?.id]); 
+  
 
   return (
     <div className="p-6">
@@ -189,44 +280,46 @@ const Dashboard: React.FC = () => {
             </div>
             
                 
-                <div className="bg-white rounded-lg shadow-md p-6">
-                  <h3 className="text-lg font-semibold mb-4">Membresías Próximas a Vencer (15 días)</h3>
-                  <div className="space-y-4">
-                    {/* Esto debería cargarse dinámicamente desde Firestore */}
-                    <div className="flex items-center p-3 bg-yellow-50 rounded-md">
-                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-500 font-semibold">
-                        {members.length > 0 && members[0]?.firstName 
-                          ? `${members[0].firstName.charAt(0)}${members[0].lastName.charAt(0)}` 
-                          : 'AB'}
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <p className="font-medium">
-                          {members.length > 0 && members[0]?.firstName 
-                            ? `${members[0].firstName} ${members[0].lastName}` 
-                            : 'Juan Fran'}
-                        </p>
-                        <p className="text-sm text-gray-500">Musculación - Vence en 8 días</p>
-                      </div>
-                      <button className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600">Renovar</button>
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="text-lg font-semibold mb-4">Membresías Próximas a Vencer (15 días)</h3>
+              <div className="space-y-4">
+                {(loading || loadingMemberships) && new Date().getTime() - startTime < 5000 ? (
+                    <div className="text-center py-4">
+                      <div className="inline-block h-6 w-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="mt-2 text-gray-500">Cargando datos...</p>
                     </div>
-                    <div className="flex items-center p-3 bg-yellow-50 rounded-md">
-                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-500 font-semibold">
-                        {members.length > 1 && members[1]?.firstName 
-                          ? `${members[1].firstName.charAt(0)}${members[1].lastName.charAt(0)}` 
-                          : 'AG'}
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <p className="font-medium">
-                          {members.length > 1 && members[1]?.firstName 
-                            ? `${members[1].firstName} ${members[1].lastName}` 
-                            : 'Ana García'}
-                        </p>
-                        <p className="text-sm text-gray-500">Pilates - Vence en 12 días</p>
-                      </div>
-                      <button className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600">Renovar</button>
+                  ) : membershipsToExpire.length === 0 ? (
+                    <div className="text-center py-4 bg-gray-50 rounded-md">
+                      <p className="text-gray-500">No hay membresías próximas a vencer</p>
                     </div>
-                  </div>
-                </div>
+                  ) : (
+                  membershipsToExpire.slice(0, 2).map((item, index) => {
+                    const daysToExpire = Math.ceil(
+                      (new Date(item.membership.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                    );
+                    
+                    return (
+                      <div key={index} className="flex items-center p-3 bg-yellow-50 rounded-md">
+                        <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-500 font-semibold">
+                          {item.member.firstName.charAt(0)}{item.member.lastName.charAt(0)}
+                        </div>
+                        <div className="ml-4 flex-1">
+                          <p className="font-medium">
+                            {item.member.firstName} {item.member.lastName}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {item.membership.activityName} - Vence en {daysToExpire} días
+                          </p>
+                        </div>
+                        <button className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600">
+                          Renovar
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
           
           {/* Gráficos */}
