@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+// src/components/members/MemberQR.tsx
+import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, Download, Printer, Share2 } from 'lucide-react';
+import QRCodeReact from 'qrcode.react'; // Cambia el nombre de la importación
+import { QRCodeCanvas } from "qrcode.react";
+
 
 interface Member {
   id: string;
   firstName: string;
   lastName: string;
-  [key: string]: any; // Para otras propiedades que pueda tener el miembro
+  [key: string]: any;
 }
 
 interface MemberQRProps {
@@ -13,47 +17,54 @@ interface MemberQRProps {
 }
 
 const MemberQR: React.FC<MemberQRProps> = ({ member }) => {
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrValue, setQrValue] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const qrRef = useRef<HTMLDivElement>(null);
   
-  // En una implementación real, esto podría:
-  // 1. Generar un QR en el servidor
-  // 2. Usar una librería como qrcode.react
-  // 3. Solicitar el QR ya generado desde la base de datos
+  // Generar el valor para el QR con los datos del miembro
   useEffect(() => {
-    // Simulamos la generación/carga del QR
     setLoading(true);
     
-    const generateQR = async () => {
-      try {
-        // En una implementación real, aquí generaríamos el QR
-        // Para este ejemplo, usamos una imagen de placeholder
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // URL de placeholder para simular un QR
-        setQrDataUrl('/api/placeholder/300/300');
-        setLoading(false);
-      } catch (error) {
-        console.error('Error generando QR:', error);
-        setLoading(false);
-      }
+    // Creamos un objeto con los datos relevantes para el QR
+    const qrData = {
+      memberId: member.id,
+      name: `${member.firstName} ${member.lastName}`,
+      timestamp: new Date().toISOString()
     };
     
-    generateQR();
+    // Convertimos el objeto a una cadena JSON
+    const qrString = JSON.stringify(qrData);
+    
+    // Establecemos el valor para el QR
+    setQrValue(qrString);
+    setLoading(false);
   }, [member]);
   
+  // Función para descargar el QR como imagen
   const handleDownload = () => {
-    // Crear un enlace para descargar la imagen
+    if (!qrRef.current) return;
+    
+    const canvas = qrRef.current.querySelector('canvas');
+    if (!canvas) return;
+    
+    const url = canvas.toDataURL('image/png');
     const link = document.createElement('a');
-    link.href = qrDataUrl;
+    link.href = url;
     link.download = `qr-socio-${member.id}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
   
+  // Función para imprimir el QR
   const handlePrint = () => {
-    // Abrir una ventana de impresión con solo el QR
+    if (!qrRef.current) return;
+    
+    const canvas = qrRef.current.querySelector('canvas');
+    if (!canvas) return;
+    
+    const canvasUrl = canvas.toDataURL('image/png');
+    
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(`
@@ -90,7 +101,7 @@ const MemberQR: React.FC<MemberQRProps> = ({ member }) => {
             <div class="container">
               <h2>${member.firstName} ${member.lastName}</h2>
               <p>ID: ${member.id}</p>
-              <img src="${qrDataUrl}" alt="QR de identificación" />
+              <img src="${canvasUrl}" alt="QR de identificación" />
             </div>
             <script>
               window.onload = function() {
@@ -119,10 +130,12 @@ const MemberQR: React.FC<MemberQRProps> = ({ member }) => {
             <span className="inline-block h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
           </div>
         ) : (
-          <div className="relative">
-            <img 
-              src={qrDataUrl} 
-              alt="QR Code" 
+          <div className="relative" ref={qrRef}>
+            {/* Componente QR */}
+            <QRCodeCanvas
+              value={qrValue}
+              size={256}
+              level="H" // Alta calidad de corrección de errores
               className="h-64 w-64 border border-gray-200 rounded-lg"
             />
             <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">

@@ -8,6 +8,8 @@ import { Transaction } from '../../types/gym.types';
 import { formatCurrency } from '../../utils/formatting.utils';
 import { registerMembershipPayment } from '../../services/payment.service';
 import useAuth from '../../hooks/useAuth';
+import { getPendingMemberships } from '../../services/payment.service';
+
 
 interface MemberPaymentProps {
   member: Member;
@@ -44,51 +46,17 @@ const MemberPayment: React.FC<MemberPaymentProps> = ({ member, onSuccess, onCanc
       setLoadingMemberships(true);
       
       try {
-        // Ejemplo de cómo obtener las membresías pendientes del socio desde Firebase
-        // Esta función debería implementarse en un servicio
-        // Por ahora, usaremos datos de ejemplo
-        const memberships: MembershipAssignment[] = [
-          {
-            id: 'mem1',
-            memberId: member.id,
-            activityId: 'act1',
-            activityName: 'Musculación',
-            startDate: '2025-03-01',
-            endDate: '2025-04-01',
-            cost: 10000,
-            paymentStatus: 'pending',
-            status: 'active',
-            maxAttendances: 30,
-            currentAttendances: 2,
-            description: 'Membresía mensual de musculación'
-          },
-          {
-            id: 'mem2',
-            memberId: member.id,
-            activityId: 'act2',
-            activityName: 'Yoga',
-            startDate: '2025-03-15',
-            endDate: '2025-04-15',
-            cost: 8000,
-            paymentStatus: 'pending',
-            status: 'active',
-            maxAttendances: 8,
-            currentAttendances: 1,
-            description: 'Membresía mensual de yoga'
-          }
-        ];
-        
-        // Filtrar solo las membresías pendientes de pago
-        const pendingOnes = memberships.filter(m => m.paymentStatus === 'pending');
-        setPendingMemberships(pendingOnes);
+        // Usar el servicio real para obtener las membresías pendientes
+        const pendingMemberships = await getPendingMemberships(gymData.id, member.id);
+        setPendingMemberships(pendingMemberships);
         
         // Calcular el monto total
-        const totalAmount = pendingOnes.reduce((sum, m) => sum + m.cost, 0);
+        const totalAmount = pendingMemberships.reduce((sum: number, m: MembershipAssignment) => sum + m.cost, 0);
         setFormData(prev => ({
           ...prev,
           amount: totalAmount,
           // Por defecto, seleccionar todas las membresías pendientes
-          membershipIds: pendingOnes.map(m => m.id || '')
+          membershipIds: pendingMemberships.map((m: MembershipAssignment) => m.id || '')
         }));
       } catch (error) {
         console.error('Error loading pending memberships:', error);

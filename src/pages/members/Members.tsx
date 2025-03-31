@@ -85,43 +85,164 @@ const Members: React.FC = () => {
   };
   
   // Manejar guardado de socio (nuevo o editado)
-  const handleSaveMember = async (formData: any) => {
-    if (!gymData?.id) return;
+  // Reemplaza la función handleSaveMember:
+const handleSaveMember = async (formData: any) => {
+  if (!gymData?.id) return;
+  
+  setLoading(true);
+  setError('');
+  
+  try {
+    console.log("Recibidos datos para guardar:", formData);
     
-    setLoading(true);
-    
-    try {
-      if (isEdit && selectedMember) {
-        // Actualizar socio existente
-        const result = await membersFirestore.update(selectedMember.id, formData);
-        
-        if (result) {
-          // Actualizar selectedMember con los nuevos datos
-          const updatedMember = await membersFirestore.getById(selectedMember.id);
-          if (updatedMember) {
-            setSelectedMember(updatedMember);
-            setView('detail');
-          } else {
-            setSelectedMember(null);
-            setView('list');
-          }
-        }
-      } else {
-        // Crear nuevo socio
-        const newMember = await membersFirestore.add(formData);
-        
-        if (newMember) {
-          setSelectedMember(newMember);
+    if (isEdit && selectedMember) {
+      // Actualizar socio existente
+      console.log("Actualizando socio existente ID:", selectedMember.id);
+      
+      // Llamar directamente al servicio
+      const result = await updateMemberDirectly(gymData.id, selectedMember.id, formData);
+      
+      if (result) {
+        console.log("Socio actualizado correctamente");
+        // Actualizar selectedMember con los nuevos datos
+        const updatedMember = await membersFirestore.getById(selectedMember.id);
+        if (updatedMember) {
+          setSelectedMember(updatedMember);
           setView('detail');
+        } else {
+          setSelectedMember(null);
+          setView('list');
         }
       }
-    } catch (err: any) {
-      console.error('Error saving member:', err);
-      setError(err.message || 'Error al guardar el socio');
-    } finally {
-      setLoading(false);
+    } else {
+      // Crear nuevo socio
+      console.log("Creando nuevo socio");
+      
+      // Llamar directamente al servicio
+      const newMember = await addMemberDirectly(gymData.id, formData);
+      
+      if (newMember) {
+        console.log("Nuevo socio creado con ID:", newMember.id);
+        setSelectedMember(newMember);
+        setView('detail');
+      }
     }
-  };
+  } catch (err: any) {
+    console.error('Error saving member:', err);
+    setError(err.message || 'Error al guardar el socio');
+  } finally {
+    setLoading(false);
+  }
+};
+
+// Añade estas funciones auxiliares:
+const addMemberDirectly = async (gymId: string, memberData: any) => {
+  try {
+    // Si hay foto, subir a Cloudinary primero
+    let photoUrl = null;
+    if (memberData.photo) {
+      try {
+        console.log("Subiendo foto a Cloudinary...");
+        const formData = new FormData();
+        formData.append('file', memberData.photo);
+        formData.append('upload_preset', 'sis_gimnasio'); // Tu preset de Cloudinary
+        
+        const cloudinaryResponse = await fetch(
+          'https://api.cloudinary.com/v1_1/dqadslasl/image/upload', // Tu cloud_name de Cloudinary
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+        
+        if (!cloudinaryResponse.ok) {
+          throw new Error(`Error de Cloudinary: ${cloudinaryResponse.statusText}`);
+        }
+        
+        const cloudinaryData = await cloudinaryResponse.json();
+        photoUrl = cloudinaryData.secure_url;
+        console.log("Foto subida exitosamente:", photoUrl);
+      } catch (uploadError) {
+        console.error("Error al subir foto:", uploadError);
+        // Continuamos sin la foto
+      }
+    }
+    
+    // Preparar datos para Firestore (sin la foto original, usando la URL)
+    const memberForFirestore = {
+      ...memberData,
+      photo: photoUrl,
+      totalDebt: 0
+    };
+    
+    // Eliminar el archivo de foto del objeto
+    delete memberForFirestore.photo;
+    
+    // Ahora guardamos en Firestore
+    const newMember = await membersFirestore.add({
+      ...memberForFirestore,
+      photo: photoUrl
+    });
+    
+    return newMember;
+  } catch (error) {
+    console.error("Error en addMemberDirectly:", error);
+    throw error;
+  }
+};
+
+const updateMemberDirectly = async (gymId: string, memberId: string, memberData: any) => {
+  try {
+    // Si hay una nueva foto, subir a Cloudinary primero
+    let photoUrl = undefined; // undefined significa que no se actualiza
+    if (memberData.photo instanceof File) {
+      try {
+        console.log("Subiendo foto a Cloudinary...");
+        const formData = new FormData();
+        formData.append('file', memberData.photo);
+        formData.append('upload_preset', 'sis_gimnasio'); // Tu preset de Cloudinary
+        
+        const cloudinaryResponse = await fetch(
+          'https://api.cloudinary.com/v1_1/dqadslasl/image/upload', // Tu cloud_name de Cloudinary
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+        
+        if (!cloudinaryResponse.ok) {
+          throw new Error(`Error de Cloudinary: ${cloudinaryResponse.statusText}`);
+        }
+        
+        const cloudinaryData = await cloudinaryResponse.json();
+        photoUrl = cloudinaryData.secure_url;
+        console.log("Foto subida exitosamente:", photoUrl);
+      } catch (uploadError) {
+        console.error("Error al subir foto:", uploadError);
+        // Continuamos sin actualizar la foto
+      }
+    }
+    
+    // Preparar datos para actualizar (sin la foto original, usando la URL)
+    const memberForUpdate: any = { ...memberData };
+    
+    // Eliminar el archivo de foto del objeto
+    delete memberForUpdate.photo;
+    
+    // Solo incluir la foto si se subió con éxito
+    if (photoUrl !== undefined) {
+      memberForUpdate.photo = photoUrl;
+    }
+    
+    // Ahora actualizamos en Firestore
+    const result = await membersFirestore.update(memberId, memberForUpdate);
+    
+    return result;
+  } catch (error) {
+    console.error("Error en updateMemberDirectly:", error);
+    throw error;
+  }
+};
   
   // Renderizado condicional según la vista actual
   const renderView = () => {

@@ -38,34 +38,36 @@ import {
   }
   
   // Obtener membresías pendientes de pago de un socio
-  export const getPendingMemberships = async (gymId: string, memberId: string): Promise<MembershipAssignment[]> => {
-    try {
-      // Referencia a la colección de membresías del socio
-      const membershipsRef = collection(db, `gyms/${gymId}/members/${memberId}/memberships`);
-      
-      // Consultar membresías con estado de pago 'pending'
-      const q = query(
-        membershipsRef,
-        where('paymentStatus', '==', 'pending'),
-        where('status', '==', 'active')
-      );
-      
-      const querySnapshot = await getDocs(q);
-      
-      const pendingMemberships: MembershipAssignment[] = [];
-      querySnapshot.forEach(doc => {
-        pendingMemberships.push({
-          id: doc.id,
-          ...doc.data()
-        } as MembershipAssignment);
-      });
-      
-      return pendingMemberships;
-    } catch (error) {
-      console.error('Error getting pending memberships:', error);
-      throw error;
-    }
-  };
+  // Asegúrate de que esta función esté definida y exportada
+export const getPendingMemberships = async (gymId: string, memberId: string): Promise<MembershipAssignment[]> => {
+  try {
+    // Referencia a la colección de membresías del socio
+    const membershipsRef = collection(db, `gyms/${gymId}/members/${memberId}/memberships`);
+    
+    // Consultar membresías con estado de pago 'pending'
+    const q = query(
+      membershipsRef,
+      where('paymentStatus', '==', 'pending'),
+      where('status', '==', 'active')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    const pendingMemberships: MembershipAssignment[] = [];
+    querySnapshot.forEach(doc => {
+      pendingMemberships.push({
+        id: doc.id,
+        ...doc.data()
+      } as MembershipAssignment);
+    });
+    
+    console.log("Membresías pendientes encontradas:", pendingMemberships.length);
+    return pendingMemberships;
+  } catch (error) {
+    console.error('Error getting pending memberships:', error);
+    throw error;
+  }
+};
   
   // Registrar un pago de membresía y actualizar la caja diaria
   export const registerMembershipPayment = async (payment: PaymentRequest): Promise<PaymentResponse> => {

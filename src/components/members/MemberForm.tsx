@@ -130,29 +130,37 @@ const MemberForm: React.FC<MemberFormProps> = ({ isEdit = false, initialData = n
     return Object.keys(newErrors).length === 0;
   };
   
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Función handleSubmit completamente:
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!validateForm()) {
+    return;
+  }
+  
+  setLoading(true);
+  setErrors({});
+  
+  try {
+    console.log("Formulario validado, intentando guardar...");
     
-    if (!validateForm()) {
-      return;
+    // Verifica si hay foto y su tamaño
+    if (formData.photo) {
+      console.log("Foto a cargar:", formData.photo.name, "Tamaño:", formData.photo.size);
     }
     
-    setLoading(true);
-    
-    try {
-      // Aquí iría la lógica para guardar en Firebase
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      onSave(formData);
-    } catch (error) {
-      console.error('Error al guardar socio:', error);
-      setErrors({
-        ...errors,
-        form: 'Ocurrió un error al guardar. Intente nuevamente.'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Enviar los datos al callback del componente padre
+    onSave(formData);
+  } catch (error) {
+    console.error('Error al guardar socio:', error);
+    setErrors({
+      ...errors,
+      form: 'Ocurrió un error al guardar. Intente nuevamente.'
+    });
+  } finally {
+    setLoading(false);
+  }
+};
   
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
