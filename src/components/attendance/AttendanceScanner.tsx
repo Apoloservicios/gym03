@@ -1,156 +1,244 @@
-import React, { useState } from 'react';
-import { QrCode, CameraOff, Camera, UserCheck, Clock, AlertCircle } from 'lucide-react';
+// src/components/attendance/AttendanceScanner.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { QrCode, CameraOff, Camera, UserCheck, Clock, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
+import useAuth from '../../hooks/useAuth';
+import { registerAttendance } from '../../services/attendance.service';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
-interface MemberData {
-  id: string;
-  firstName: string;
-  lastName: string;
-  photo: string | null;
-  activeMemberships?: number;
-}
+
+
 
 interface ScanResult {
   success: boolean;
   message: string;
   timestamp: Date;
-  member: MemberData | null;
+  member: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    photo: string | null;
+    activeMemberships?: number;
+  } | null;
   error?: string;
 }
 
 interface AttendanceRecord {
   id: string;
   memberId: string;
-  member: MemberData;
+  member: any;
   timestamp: Date;
   status: string;
   error?: string;
 }
 
 const AttendanceScanner: React.FC = () => {
+  
+  
+  const { gymData } = useAuth();
   const [scanning, setScanning] = useState<boolean>(false);
   const [lastScan, setLastScan] = useState<Date | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanHistory, setScanHistory] = useState<AttendanceRecord[]>([]);
+  const [processingQR, setProcessingQR] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  
+  const qrScannerRef = useRef<Html5Qrcode | null>(null);
+  const scannerDivId = "html5-qrcode-scanner";
 
-  // Función para simular escaneo de QR (en producción se usaría una librería de escaneo real)
-  const startScanning = () => {
-    setScanning(true);
-    setScanResult(null);
-    
-    // Simulamos un escaneo exitoso después de 2 segundos
-    setTimeout(() => {
-      // Generar un ID de socio aleatorio para simular un escaneo
-      const memberId = `MEM${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-      
-      // Simular validación del QR y obtención de datos del socio
-      validateQrAndRegisterAttendance(memberId);
-      
-      setScanning(false);
-    }, 2000);
-  };
-  
-  const stopScanning = () => {
-    setScanning(false);
-  };
-  
-  // Función que validaría el QR y registraría la asistencia en la base de datos
-  const validateQrAndRegisterAttendance = (memberId: string) => {
-    // En un caso real, aquí se consultaría la base de datos
-    const now = new Date();
-    
-    // Simular posibles resultados
-    const possibleResults = [
-      { 
-        success: true, 
-        member: { 
-          id: memberId, 
-          firstName: 'Juan', 
-          lastName: 'Pérez', 
-          photo: null,
-          activeMemberships: 2
-        } 
-      },
-      { 
-        success: true, 
-        member: { 
-          id: memberId, 
-          firstName: 'María', 
-          lastName: 'González', 
-          photo: null,
-          activeMemberships: 1
-        } 
-      },
-      { 
-        success: false, 
-        error: 'membership_expired',
-        member: { 
-          id: memberId, 
-          firstName: 'Carlos', 
-          lastName: 'Rodríguez',
-          photo: null
-        } 
-      },
-      { 
-        success: false, 
-        error: 'not_found',
-        member: null
+  // Cargar historial de escaneos recientes al montar el componente
+  useEffect(() => {
+    // Aquí podrías cargar los últimos escaneos desde Firestore
+    // Por ahora dejamos un historial vacío
+    return () => {
+      if (qrScannerRef.current && qrScannerRef.current.isScanning) {
+        qrScannerRef.current.stop().catch(err => console.error(err));
       }
-    ];
+    };
+  }, []);
+
+  const startScanning = async () => {
+    setScanResult(null);
+    setCameraError(null);
     
-    // Elegir un resultado aleatorio para simular
-    const result = possibleResults[Math.floor(Math.random() * possibleResults.length)];
-    
-    if (result.success && result.member) {
-      // Registro exitoso
-      const attendanceRecord: AttendanceRecord = {
-        id: `ATT${Date.now()}`,
-        memberId: result.member.id,
-        member: result.member,
-        timestamp: now,
-        status: 'success'
-      };
+    try {
+      // Asegurarse de que el elemento existe
+      const scannerElement = document.getElementById(scannerDivId);
+      if (!scannerElement) {
+        setCameraError("No se pudo encontrar el elemento del escáner en el DOM");
+        console.error("El elemento scannerDivId no existe:", scannerDivId);
+        return;
+      }
       
-      setScanResult({
-        success: true,
-        message: `Asistencia registrada para ${result.member.firstName} ${result.member.lastName}`,
-        timestamp: now,
-        member: result.member
-      });
+      // Instanciar el escáner
+      const html5QrCode = new Html5Qrcode(scannerDivId);
+      qrScannerRef.current = html5QrCode;
       
-      // Agregar a historial
-      setScanHistory(prev => [attendanceRecord, ...prev].slice(0, 10));
-    } else {
-      // Error en el registro
-      const errorMessage = result.error === 'membership_expired' && result.member 
-        ? `Membresía vencida para ${result.member.firstName} ${result.member.lastName}`
-        : 'QR no reconocido o socio no encontrado';
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
       
-      setScanResult({
-        success: false,
-        message: errorMessage,
-        timestamp: now,
-        member: result.member,
-        error: result.error
-      });
+      // Comprobar cámaras disponibles
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length === 0) {
+        setCameraError("No se encontraron cámaras en el dispositivo");
+        return;
+      }
       
-      if (result.member) {
-        const errorRecord: AttendanceRecord = {
-          id: `ATT${Date.now()}`,
-          memberId: result.member.id,
-          member: result.member,
-          timestamp: now,
-          status: 'error',
-          error: result.error
-        };
-        
-        // Agregar a historial
-        setScanHistory(prev => [errorRecord, ...prev].slice(0, 10));
+      // Iniciar el escáner
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess,
+        onScanFailure
+      );
+      
+      setScanning(true);
+    } catch (err: any) {
+      console.error("Error al iniciar el escáner:", err);
+      setCameraError(err.message || "Error al iniciar la cámara");
+      setScanning(false);
+    }
+  };
+  
+  const stopScanning = async () => {
+    if (qrScannerRef.current && qrScannerRef.current.isScanning) {
+      try {
+        await qrScannerRef.current.stop();
+        setScanning(false);
+      } catch (err) {
+        console.error("Error al detener el escáner:", err);
       }
     }
-    
-    setLastScan(now);
   };
-  
+
+  const onScanSuccess = async (decodedText: string) => {
+    if (!gymData?.id || processingQR) {
+      return;
+    }
+
+    try {
+      setProcessingQR(true);
+      console.log("QR Code escaneado:", decodedText);
+
+      // Decodificar datos del QR (asumiendo formato base64)
+      let qrData;
+      try {
+        // Intentar decodificar como JSON
+        const decoded = atob(decodedText);
+        qrData = JSON.parse(decoded);
+      } catch (e) {
+        // Si falla el decode, asumimos que el QR contiene directamente el ID del miembro
+        qrData = { memberId: decodedText };
+      }
+
+      // Verificar que contiene ID de miembro
+      if (!qrData.memberId) {
+        throw new Error("Código QR inválido o dañado");
+      }
+
+      const memberId = qrData.memberId;
+      const now = new Date();
+
+      // Obtener datos del miembro
+      const memberRef = doc(db, `gyms/${gymData.id}/members`, memberId);
+      const memberSnap = await getDoc(memberRef);
+
+      if (!memberSnap.exists()) {
+        throw new Error("Socio no encontrado");
+      }
+
+      const memberData = memberSnap.data();
+      
+      // Obtener membresías activas del socio
+      const membershipsQuery = collection(db, `gyms/${gymData.id}/members/${memberId}/memberships`);
+      const activeQ = query(membershipsQuery, where('status', '==', 'active'));
+      const activeSnap = await getDocs(activeQ);
+      
+      if (activeSnap.empty) {
+        throw new Error("El socio no tiene membresías activas");
+      }
+      
+      // Seleccionar la primera membresía activa para registrar asistencia
+      const membershipDoc = activeSnap.docs[0];
+      const membershipData = membershipDoc.data();
+      
+      // Registrar la asistencia
+      const result = await registerAttendance(
+        gymData.id,
+        memberId,
+        `${memberData.firstName} ${memberData.lastName}`,
+        membershipDoc.id,
+        membershipData.activityName || "General"
+      );
+      
+      // Crear objeto de resultado
+      const scanResultObj: ScanResult = {
+        success: result.status === 'success',
+        message: result.status === 'success' 
+          ? `Asistencia registrada para ${memberData.firstName} ${memberData.lastName}`
+          : result.error || "Error al registrar asistencia",
+        timestamp: now,
+        member: {
+          id: memberId,
+          firstName: memberData.firstName,
+          lastName: memberData.lastName,
+          photo: memberData.photo || null,
+          activeMemberships: activeSnap.size
+        },
+        error: result.status === 'error' ? result.error : undefined
+      };
+      
+      setScanResult(scanResultObj);
+      
+      // Agregar al historial
+      const attendanceRecord: AttendanceRecord = {
+        id: result.id || `ATT${Date.now()}`,
+        memberId,
+        member: {
+          firstName: memberData.firstName,
+          lastName: memberData.lastName
+        },
+        timestamp: now,
+        status: result.status,
+        error: result.status === 'error' ? result.error : undefined
+      };
+      
+      setScanHistory(prev => [attendanceRecord, ...prev].slice(0, 10));
+      
+      // Actualizar timestamp del último escaneo
+      setLastScan(now);
+      
+      // Opcional: detener el escaneo después de un resultado exitoso
+      if (result.status === 'success') {
+        setTimeout(() => {
+          stopScanning();
+        }, 2000);
+      }
+      
+    } catch (error: any) {
+      console.error("Error procesando QR:", error);
+      
+      // Crear resultado de error
+      const errorResult: ScanResult = {
+        success: false,
+        message: error.message || "Error al procesar el código QR",
+        timestamp: new Date(),
+        member: null,
+        error: error.message
+      };
+      
+      setScanResult(errorResult);
+      
+    } finally {
+      setProcessingQR(false);
+    }
+  };
+
+  const onScanFailure = (error: any) => {
+    // No hacemos nada aquí, porque estas son fallas comunes de escaneo
+    // console.error("Error de escaneo:", error);
+  };
+
   // Formatear fecha y hora
   const formatDateTime = (date: Date) => {
     return date.toLocaleTimeString('es-AR', { 
@@ -159,7 +247,7 @@ const AttendanceScanner: React.FC = () => {
       second: '2-digit'
     });
   };
-  
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-xl font-semibold mb-4">Control de Asistencias</h2>
@@ -169,17 +257,25 @@ const AttendanceScanner: React.FC = () => {
         <div className="border rounded-lg p-5">
           <h3 className="text-lg font-medium mb-4">Escanear QR</h3>
           
+          {cameraError && (
+            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md flex items-center">
+              <AlertCircle size={18} className="mr-2" />
+              <div>
+                <p className="font-medium">Error de cámara</p>
+                <p className="text-sm">{cameraError}</p>
+                <p className="text-sm mt-1">Asegúrate de que tu dispositivo tiene cámara y has concedido permisos.</p>
+              </div>
+            </div>
+          )}
+          
           <div className="flex flex-col items-center">
             <div className="mb-4 h-64 w-full max-w-md bg-gray-100 rounded-lg flex items-center justify-center relative overflow-hidden">
               {scanning ? (
-                <>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Camera size={64} className="text-gray-400" />
-                  </div>
-                  <div className="absolute inset-0 border-4 border-blue-500 animate-pulse rounded-lg"></div>
-                  <div className="absolute inset-0 bg-blue-500 bg-opacity-10"></div>
-                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-blue-500 animate-scan"></div>
-                </>
+                <div className="w-full h-full relative">
+                  <div id={scannerDivId} className="w-full h-full"></div>
+                  <div className="absolute inset-0 border-4 border-blue-500 animate-pulse rounded-lg pointer-events-none"></div>
+                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-blue-500 animate-scan pointer-events-none"></div>
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center">
                   <CameraOff size={64} className="text-gray-400 mb-2" />
@@ -220,7 +316,7 @@ const AttendanceScanner: React.FC = () => {
             <div className={`mt-6 p-4 rounded-lg ${scanResult.success ? 'bg-green-50' : 'bg-red-50'}`}>
               <div className="flex items-start">
                 <div className={`flex-shrink-0 rounded-full p-2 ${scanResult.success ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                  {scanResult.success ? <UserCheck size={20} /> : <AlertCircle size={20} />}
+                  {scanResult.success ? <CheckCircle size={20} /> : <XCircle size={20} />}
                 </div>
                 
                 <div className="ml-3">
@@ -294,10 +390,8 @@ const AttendanceScanner: React.FC = () => {
                         <div className="text-xs text-gray-500 mt-0.5">
                           {record.status === 'success' ? (
                             'Asistencia registrada correctamente'
-                          ) : record.error === 'membership_expired' ? (
-                            'Membresía vencida'
                           ) : (
-                            'Error al registrar asistencia'
+                            record.error || 'Error al registrar asistencia'
                           )}
                         </div>
                       </div>
@@ -316,7 +410,7 @@ const AttendanceScanner: React.FC = () => {
         </div>
       </div>
       
-      {/* Usamos CSS normal en lugar de jsx para evitar errores */}
+      {/* Estilos para la animación de escaneo */}
       <style>
         {`
         @keyframes scan {
