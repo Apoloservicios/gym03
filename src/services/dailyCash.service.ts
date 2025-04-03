@@ -458,6 +458,69 @@ export const getTransactionsSummary = async (
     console.error('Error getting transactions summary:', error);
     throw error;
   }
+
+};
+
+// Abrir o reabrir la caja diaria
+export const openDailyCash = async (
+  gymId: string,
+  date: string,
+  data: {
+    openingAmount: number;
+    notes?: string;
+    userId: string;
+  }
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const dailyCashRef = doc(db, `gyms/${gymId}/dailyCash`, date);
+    const dailyCashSnap = await getDoc(dailyCashRef);
+    
+    if (dailyCashSnap.exists()) {
+      // Si ya existe un registro, verificar si está cerrado
+      const dailyCashData = dailyCashSnap.data() as DailyCash;
+      
+      if (dailyCashData.status === 'open') {
+        return {
+          success: false,
+          error: 'La caja para esta fecha ya se encuentra abierta'
+        };
+      }
+      
+      // Reabrir la caja si estaba cerrada
+      await updateDoc(dailyCashRef, {
+        status: 'open',
+        openingTime: Timestamp.now(),
+        openingAmount: data.openingAmount,
+        notes: data.notes || 'Caja reabierta manualmente',
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Crear un nuevo registro de caja diaria
+      await setDoc(dailyCashRef, {
+        date: date,
+        openingTime: Timestamp.now(),
+        openingAmount: data.openingAmount,
+        totalIncome: 0,
+        totalExpense: 0,
+        membershipIncome: 0,
+        otherIncome: 0,
+        status: 'open',
+        openedBy: data.userId,
+        notes: data.notes || 'Caja abierta manualmente',
+        createdAt: serverTimestamp()
+      });
+    }
+    
+    return {
+      success: true
+    };
+  } catch (error: any) {
+    console.error('Error opening daily cash:', error);
+    return {
+      success: false,
+      error: error.message || 'Error al abrir la caja'
+    };
+  }
 };
 
 export default {
@@ -467,6 +530,7 @@ export default {
   registerExtraIncome,
   registerExpense,
   closeDailyCash,
+  openDailyCash,
   getTransactionsByDate,
   getTransactionsSummary
 };

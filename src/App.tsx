@@ -14,6 +14,10 @@ import Cashier from './pages/cashier/Cashier';
 import Reports from './pages/reports/Reports';
 import Activities from './pages/settings/Activities';
 import Users from './pages/settings/Users';
+// Importamos las nuevas páginas
+import Exercises from './pages/exercises/Exercises';
+import Routines from './pages/routines/Routines';
+import MemberRoutines from './pages/member-routines/MemberRoutines';
 import { auth } from './config/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 import { loginUser } from './services/auth.service';
@@ -96,6 +100,14 @@ const App: React.FC = () => {
         return <Cashier />;
       case 'reports':
         return <Reports />;
+      // Nuevas páginas de ejercicios y rutinas
+      case 'exercises':
+        return <Exercises />;
+      case 'routines':
+        return <Routines />;
+      case 'member-routines':
+        return <MemberRoutines />;
+      // Páginas de configuración
       case 'business':
         return <BusinessProfile />;
       case 'memberships':
@@ -143,7 +155,7 @@ const App: React.FC = () => {
     
     // Empleados pueden acceder sólo a ciertas páginas
     if (userData.role === 'user') {
-      const allowedPages = ['dashboard', 'members', 'attendance'];
+      const allowedPages = ['dashboard', 'members', 'attendance', 'exercises', 'routines', 'member-routines'];
       return allowedPages.includes(page);
     }
     

@@ -53,9 +53,38 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
     fetchMemberships();
   }, [gymData?.id, member.id]);
   
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-AR');
+  // Función mejorada para formatear fechas (cualquier tipo de fecha)
+  const formatDate = (dateInput: any) => {
+    if (!dateInput) return 'No disponible';
+    
+    try {
+      // Si es un objeto Timestamp de Firestore
+      if (typeof dateInput === 'object' && 'seconds' in dateInput) {
+        const date = new Date(dateInput.seconds * 1000);
+        return date.toLocaleDateString('es-AR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      // Si es un string o Date
+      const date = new Date(dateInput);
+      if (isNaN(date.getTime())) {
+        return 'Formato de fecha inválido';
+      }
+      
+      return date.toLocaleDateString('es-AR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error, dateInput);
+      return 'Error de formato';
+    }
   };
   
   // Color según estado de la membresía
@@ -172,7 +201,7 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
                         <div className="text-sm text-gray-600 mr-4">
                           <div className="flex items-center">
                             <Calendar size={14} className="mr-1" />
-                            <span>{membership.startDate} - {membership.endDate}</span>
+                            <span>{formatDate(membership.startDate)} - {formatDate(membership.endDate)}</span>
                           </div>
                           <div className="flex items-center mt-1">
                             <DollarSign size={14} className="mr-1" />
@@ -270,7 +299,7 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
                 <div className="p-4 bg-gray-50 rounded-lg border">
                   <h4 className="text-sm font-medium text-gray-500 mb-1">Última Asistencia</h4>
                   <p className="text-xl font-bold text-gray-700">
-                    {member.lastAttendance ? member.lastAttendance : 'Nunca'}
+                    {member.lastAttendance ? formatDate(member.lastAttendance) : 'Nunca'}
                   </p>
                 </div>
               </div>
@@ -312,7 +341,7 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
                         <div>
                           <h4 className="font-medium">{membership.activityName}</h4>
                           <p className="text-sm text-gray-500">
-                            Vence: {membership.endDate}
+                            Vence: {formatDate(membership.endDate)}
                           </p>
                         </div>
                         <div>

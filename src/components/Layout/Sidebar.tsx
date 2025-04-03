@@ -1,7 +1,8 @@
+// src/components/Layout/Sidebar.tsx (actualizado con opciones de ejercicios y rutinas)
 import React, { useState } from 'react';
 import { 
   Home, Users, CreditCard, Calendar, Settings, 
-  ChevronDown, ChevronUp, LogOut, Menu, X, BarChart2
+  ChevronDown, ChevronUp, LogOut, Menu, X, BarChart2, Dumbbell
 } from 'lucide-react';
 import { auth } from '../../config/firebase';
 
@@ -15,6 +16,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRole }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [trainingOpen, setTrainingOpen] = useState<boolean>(false);
   
   // Lista completa de items del menú
   const allMenuItems = [
@@ -22,7 +24,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRole }) =
     { id: 'members', label: 'Socios', icon: <Users size={20} />, roles: ['superadmin', 'admin', 'user'] },
     { id: 'attendance', label: 'Asistencias', icon: <Calendar size={20} />, roles: ['superadmin', 'admin', 'user'] },
     { id: 'cashier', label: 'Caja Diaria', icon: <CreditCard size={20} />, roles: ['superadmin', 'admin'] },
-    { id: 'reports', label: 'Informes', icon: <BarChart2 size={20} />, roles: ['superadmin', 'admin'] }
+    { id: 'reports', label: 'Informes', icon: <BarChart2 size={20} />, roles: ['superadmin', 'admin'] },
+    { id: 'training', label: 'Entrenamiento', icon: <Dumbbell size={20} />, roles: ['superadmin', 'admin', 'user'] }
+  ];
+  
+  // Lista de items del submenú de entrenamiento
+  const allTrainingItems = [
+    { id: 'exercises', label: 'Ejercicios', roles: ['superadmin', 'admin', 'user'] },
+    { id: 'routines', label: 'Rutinas', roles: ['superadmin', 'admin', 'user'] },
+    { id: 'member-routines', label: 'Rutinas asignadas', roles: ['superadmin', 'admin', 'user'] }
   ];
   
   // Lista completa de items de configuración
@@ -35,6 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRole }) =
   
   // Filtrar menú según el rol del usuario
   const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
+  const trainingItems = allTrainingItems.filter(item => item.roles.includes(userRole));
   const settingsItems = allSettingsItems.filter(item => item.roles.includes(userRole));
   
   const handleClick = (pageId: string) => {
@@ -102,17 +113,53 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userRole }) =
           <nav className="flex-1 overflow-y-auto">
             <ul className="py-4">
               {menuItems.map(item => (
-                <li key={item.id}>
-                  <button
-                    onClick={() => handleClick(item.id)}
-                    className={`w-full flex items-center py-3 px-4 hover:bg-gray-100 ${
-                      activePage === item.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                    }`}
-                  >
-                    <span className="mr-3">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </button>
-                </li>
+                item.id === 'training' ? (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => setTrainingOpen(!trainingOpen)}
+                      className={`w-full flex items-center justify-between py-3 px-4 hover:bg-gray-100 ${
+                        trainingItems.some(subItem => activePage === subItem.id) ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center">
+                        <span className="mr-3">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                      <span>
+                        {trainingOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </span>
+                    </button>
+                    
+                    {trainingOpen && (
+                      <ul className="bg-gray-50 py-2">
+                        {trainingItems.map(subItem => (
+                          <li key={subItem.id}>
+                            <button
+                              onClick={() => handleClick(subItem.id)}
+                              className={`w-full flex items-center py-2 px-12 hover:bg-gray-100 ${
+                                activePage === subItem.id ? 'text-blue-700 font-medium' : 'text-gray-700'
+                              }`}
+                            >
+                              {subItem.label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ) : (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => handleClick(item.id)}
+                      className={`w-full flex items-center py-3 px-4 hover:bg-gray-100 ${
+                        activePage === item.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                      }`}
+                    >
+                      <span className="mr-3">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  </li>
+                )
               ))}
               
               {/* Configuración con submenú - solo mostrar si hay elementos */}
