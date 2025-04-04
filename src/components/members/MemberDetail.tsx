@@ -1,13 +1,14 @@
 // src/components/members/MemberDetail.tsx
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Phone, Calendar, MapPin, Edit, Trash, QrCode, CreditCard, Plus, Clock, DollarSign, ChevronDown, ChevronUp, FileText, History, User } from 'lucide-react';
+import { Mail, Phone, Calendar, MapPin, Edit, Trash, QrCode, CreditCard, Plus, Clock, DollarSign, ChevronDown, ChevronUp, FileText, History, User, Dumbbell } from 'lucide-react';
 import { Member } from '../../types/member.types';
 import { MembershipAssignment } from '../../types/member.types';
 import { formatCurrency } from '../../utils/formatting.utils';
 import MemberAccountStatement from './MemberAccountStatement';
 import MemberPayment from './MemberPayment';
 import MemberAttendanceHistory from './MemberAttendanceHistory';
+import MemberRoutinesTab from './MemberRoutinesTab';
 import useAuth from '../../hooks/useAuth';
 import { getMemberMemberships } from '../../services/member.service';
 
@@ -28,7 +29,7 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
 }) => {
   const { gymData } = useAuth();
   // Estado para controlar las diferentes vistas
-  const [activeView, setActiveView] = useState<'details' | 'memberships' | 'account' | 'attendance' | 'payment'>('details');
+  const [activeView, setActiveView] = useState<'details' | 'memberships' | 'account' | 'attendance' | 'payment' | 'routines'>('details');
   const [memberships, setMemberships] = useState<MembershipAssignment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -147,6 +148,14 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
           <MemberAttendanceHistory 
             memberId={member.id}
             memberName={`${member.firstName} ${member.lastName}`}
+          />
+        );
+      case 'routines':
+        return (
+          <MemberRoutinesTab 
+            memberId={member.id}
+            memberName={`${member.firstName} ${member.lastName}`}
+            onAssignRoutine={() => onAssignMembership(member)}
           />
         );
       case 'memberships':
@@ -493,6 +502,14 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
           >
             <CreditCard size={18} className="mr-2" />
             Membresías
+          </button>
+          
+          <button 
+            onClick={() => setActiveView('routines')}
+            className={`flex-1 text-center py-3 px-4 text-sm font-medium ${activeView === 'routines' ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100'} flex items-center justify-center`}
+          >
+            <Dumbbell size={18} className="mr-2" />
+            Rutinas
           </button>
           
           <button 

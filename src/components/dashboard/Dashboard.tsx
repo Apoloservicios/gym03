@@ -1,29 +1,38 @@
-// src/components/dashboard/Dashboard.tsx
+// src/components/dashboard/Dashboard.tsx (versión corregida)
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Users, ClipboardCheck, Dumbbell, Bell } from 'lucide-react';
+import { 
+  Users, ClipboardCheck, Dumbbell, Bell, Calendar, 
+  UserCheck, DollarSign, RefreshCw, AlertCircle 
+} from 'lucide-react';
 import useAuth from '../../hooks/useAuth';
 import useFirestore from '../../hooks/useFirestore';
 import { getMemberMemberships } from '../../services/member.service';
+import { getRecentAttendances } from '../../services/attendance.service';
+import { getMemberRoutines } from '../../services/routine.service';
 import { getDailyCashForDateRange, getTransactionsSummary } from '../../services/dailyCash.service';
 import { formatCurrency } from '../../utils/formatting.utils';
 import { Member } from '../../types/member.types';
 import { MembershipAssignment } from '../../types/member.types';
+import { MemberRoutine } from '../../types/exercise.types';
+import { Attendance } from '../../types/gym.types';
 
 interface DashboardCardProps {
   title: string;
   value: string | number;
+  subvalue?: string;
   icon: React.ReactNode;
   color: string;
 }
 
-const DashboardCard: React.FC<DashboardCardProps> = ({ title, value, icon, color }) => {
+const DashboardCard: React.FC<DashboardCardProps> = ({ title, value, subvalue, icon, color }) => {
   return (
     <div className="bg-white rounded-lg shadow-md p-6 transition-all duration-300 hover:shadow-lg border-l-4" style={{ borderLeftColor: color }}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-500 font-medium">{title}</p>
           <h2 className="text-3xl font-bold mt-2">{value}</h2>
+          {subvalue && <p className="text-sm text-gray-500 mt-1">{subvalue}</p>}
         </div>
         <div className="text-2xl p-3 rounded-full" style={{ backgroundColor: `${color}20`, color }}>
           {icon}
@@ -38,12 +47,19 @@ const Dashboard: React.FC = () => {
   const membersFirestore = useFirestore<Member>('members');
   
   const [members, setMembers] = useState<Member[]>([]);
+  const [activeMembers, setActiveMembers] = useState<Member[]>([]);
+  const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [totalAttendances, setTotalAttendances] = useState<number>(0);
-  const [totalRoutines, setTotalRoutines] = useState<number>(15); // Default value until integrated
-  const [notifications, setNotifications] = useState<number>(3); // Default value until integrated
+  const [attendancesToday, setAttendancesToday] = useState<number>(0);
+  const [routines, setRoutines] = useState<MemberRoutine[]>([]);
+  const [activeRoutines, setActiveRoutines] = useState<MemberRoutine[]>([]);
   const [memberData, setMemberData] = useState<any[]>([]);
   const [incomeData, setIncomeData] = useState<any[]>([]);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
+  const [pendingPayments, setPendingPayments] = useState<number>(0);
+  
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [startTime] = useState<number>(new Date().getTime());
   
   // Obtener la fecha actual y calcular fechas para filtrar los datos
@@ -52,13 +68,17 @@ const Dashboard: React.FC = () => {
   const startOfPrevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
   const formattedStartDate = startOfPrevMonth.toISOString().split('T')[0];
   const formattedEndDate = currentDate.toISOString().split('T')[0];
+  const today = currentDate.toISOString().split('T')[0]; // CORRECCIÓN: Definir today correctamente
 
-  // Memebresias
+  // Membresías por vencer
   const [membershipsToExpire, setMembershipsToExpire] = useState<{
     member: Member,
     membership: MembershipAssignment
   }[]>([]);
   const [loadingMemberships, setLoadingMemberships] = useState<boolean>(true);
+
+  // Próximos cumpleaños
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState<Member[]>([]);
 
   // Cargar datos
   useEffect(() => {
@@ -69,11 +89,44 @@ const Dashboard: React.FC = () => {
       }
       
       setLoading(true);
+      setError(null);
       
       try {
         // Cargar miembros
         const membersData = await membersFirestore.getAll();
         setMembers(membersData);
+        
+        // Filtrar socios activos
+        const active = membersData.filter(m => m.status === 'active');
+        setActiveMembers(active);
+
+        // Calcular saldo pendiente total
+        const pending = membersData.reduce((total, member) => total + (member.totalDebt || 0), 0);
+        setPendingPayments(pending);
+        
+        // Cargar asistencias recientes
+        const attendancesData = await getRecentAttendances(gymData.id, 50);
+        setAttendances(attendancesData);
+        
+        // Calcular asistencias de hoy
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const todayAttendances = attendancesData.filter(a => {
+          const timestamp = a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+          return timestamp >= today;
+        });
+        
+        setAttendancesToday(todayAttendances.length);
+        setTotalAttendances(attendancesData.length);
+        
+        // Cargar rutinas
+        const routinesData = await getMemberRoutines(gymData.id, '');
+        setRoutines(routinesData);
+        
+        // Filtrar rutinas activas
+        const active_routines = routinesData.filter(r => r.status === 'active');
+        setActiveRoutines(active_routines);
         
         // Cargar datos financieros solo para administradores
         if (userRole === 'admin' || userRole === 'superadmin') {
@@ -91,35 +144,44 @@ const Dashboard: React.FC = () => {
           }));
 
           setIncomeData(processedIncomeData);
+          
+          // Calcular ingresos totales del mes
+          const financialSummary = await getTransactionsSummary(
+            gymData.id,
+            startOfMonth.toISOString().split('T')[0],
+            formattedEndDate // CORRECCIÓN: Usar formattedEndDate en lugar de today
+          );
+          
+          setTotalIncome(financialSummary.totalIncome);
         }
         
-        // Preparar datos para el gráfico de miembros (para todos los roles)
-        // Simulación de datos - en una implementación real se debería obtener de Firestore
+        // Preparar datos para el gráfico de miembros
         const memberGrowthData = [];
         
         const daysToShow = 30; // Mostrar los últimos 30 días
-        for (let i = 0; i < daysToShow; i += 7) {
+        for (let i = 0; i < daysToShow; i += 5) {
           const date = new Date();
           date.setDate(date.getDate() - (daysToShow - i));
           memberGrowthData.push({
             name: date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }),
-            value: Math.round(membersData.length * (0.85 + (i / daysToShow * 0.15)))
+            value: Math.round(active.length * (0.85 + (i / daysToShow * 0.15)))
           });
         }
         
         // Añadir el valor actual
         memberGrowthData.push({
           name: currentDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }),
-          value: membersData.length
+          value: active.length
         });
         
         setMemberData(memberGrowthData);
         
-        // Contar asistencias (simulación - implementación real obtendría esto de Firestore)
-        setTotalAttendances(Math.round(membersData.length * 3.5)); // Promedio de 3.5 asistencias por miembro
+        // Procesar próximos cumpleaños
+        loadUpcomingBirthdays(membersData);
         
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
+      } catch (err: any) {
+        console.error('Error loading dashboard data:', err);
+        setError(err.message || 'Error al cargar datos del dashboard');
       } finally {
         setLoading(false);
       }
@@ -128,7 +190,81 @@ const Dashboard: React.FC = () => {
     loadDashboardData();
   }, [gymData?.id, userRole]);
 
+  // Cargar próximos cumpleaños
+  const loadUpcomingBirthdays = (membersData: Member[]) => {
+    // Miembros con fecha de nacimiento válida
+    const membersWithBirthday = membersData.filter(m => 
+      m.birthDate && m.birthDate.length > 0 && new Date(m.birthDate as string).toString() !== 'Invalid Date'
+    );
+    
+    if (membersWithBirthday.length === 0) {
+      setUpcomingBirthdays([]);
+      return;
+    }
+    
+    // Obtener el día y mes actual
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    
+    // Filtrar los miembros cuyo cumpleaños esté dentro de los próximos 30 días
+    const upcoming = membersWithBirthday.filter(member => {
+      // CORRECCIÓN: Usar as string para asegurar que no será undefined
+      const birthDate = new Date(member.birthDate as string);
+      const birthMonth = birthDate.getMonth() + 1;
+      const birthDay = birthDate.getDate();
+      
+      // Caso especial: Diciembre a Enero
+      if (currentMonth === 12 && birthMonth === 1) {
+        return true;
+      }
+      
+      // Mismo mes, día después o igual a hoy
+      if (birthMonth === currentMonth && birthDay >= currentDay) {
+        return birthDay - currentDay <= 30;
+      }
+      
+      // Mes siguiente
+      if (birthMonth === currentMonth + 1) {
+        // Días que faltan en el mes actual + días en el próximo mes
+        const daysLeftInCurrentMonth = new Date(today.getFullYear(), currentMonth, 0).getDate() - currentDay;
+        return birthDay <= (30 - daysLeftInCurrentMonth);
+      }
+      
+      return false;
+    });
+    
+    // Ordenar por proximidad
+    upcoming.sort((a, b) => {
+      // CORRECCIÓN: Usar as string para asegurar que no será undefined
+      const dateA = new Date(a.birthDate as string);
+      const dateB = new Date(b.birthDate as string);
+      
+      const monthA = dateA.getMonth() + 1;
+      const dayA = dateA.getDate();
+      
+      const monthB = dateB.getMonth() + 1;
+      const dayB = dateB.getDate();
+      
+      // Si estamos en diciembre, enero va primero
+      if (currentMonth === 12) {
+        if (monthA === 1 && monthB !== 1) return -1;
+        if (monthA !== 1 && monthB === 1) return 1;
+      }
+      
+      // Si el mes es el mismo, ordenar por día
+      if (monthA === monthB) {
+        return dayA - dayB;
+      }
+      
+      // Si los meses son diferentes, el más cercano va primero
+      return monthA - monthB;
+    });
+    
+    setUpcomingBirthdays(upcoming);
+  };
 
+  // Cargar membresías próximas a vencer
   const loadUpcomingExpirations = async () => {
     if (!gymData?.id) {
       setLoadingMemberships(false);
@@ -207,45 +343,111 @@ const Dashboard: React.FC = () => {
       setMembershipsToExpire([]);
       setLoadingMemberships(false);
     }
-  }, [members, gymData?.id]); 
-  
+  }, [members, gymData?.id]);
+
+  // Formatear fecha
+  const formatDate = (dateInput: any): string => {
+    if (!dateInput) return '';
+    
+    try {
+      // Si es un objeto Timestamp de Firestore
+      if (dateInput.toDate && typeof dateInput.toDate === 'function') {
+        const date = dateInput.toDate();
+        return date.toLocaleString('es-AR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      // Si es un string o Date
+      const date = new Date(dateInput);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleString('es-AR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      return String(dateInput);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return String(dateInput);
+    }
+  };
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <button 
+          onClick={() => window.location.reload()}
+          className="p-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex items-center"
+          disabled={loading}
+        >
+          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+      
+      {error && (
+        <div className="mb-6 p-3 bg-red-100 text-red-700 rounded-md flex items-center">
+          <AlertCircle size={18} className="mr-2" />
+          {error}
+        </div>
+      )}
       
       {loading ? (
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
         </div>
       ) : (
         <>
           {/* Tarjetas de resumen */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <DashboardCard 
-              title="Socios Registrados" 
-              value={members.length} 
-              icon={<Users size={20} />} 
+              title="Socios Activos" 
+              value={activeMembers.length} 
+              subvalue={`Total: ${members.length}`}
+              icon={<Users size={24} />} 
               color="#4F46E5" 
             />
             <DashboardCard 
               title="Asistencias" 
-              value={totalAttendances} 
-              icon={<ClipboardCheck size={20} />} 
+              value={attendancesToday}
+              subvalue={`Total: ${totalAttendances} este mes`}
+              icon={<UserCheck size={24} />} 
               color="#10B981" 
             />
             <DashboardCard 
-              title="Rutinas" 
-              value={totalRoutines} 
-              icon={<Dumbbell size={20} />} 
+              title="Rutinas Activas" 
+              value={activeRoutines.length} 
+              subvalue={`Total: ${routines.length}`}
+              icon={<Dumbbell size={24} />} 
               color="#F59E0B" 
             />
-            <DashboardCard 
-              title="Notificaciones" 
-              value={notifications} 
-              icon={<Bell size={20} />} 
-              color="#EF4444" 
-            />
+            
+            {/* Mostrar finanzas para administradores o membresias por vencer para usuarios */}
+            {(userRole === 'admin' || userRole === 'superadmin') ? (
+              <DashboardCard 
+                title="Ingresos del Mes" 
+                value={formatCurrency(totalIncome)} 
+                subvalue={`Pendiente: ${formatCurrency(pendingPayments)}`}
+                icon={<DollarSign size={24} />} 
+                color="#EF4444" 
+              />
+            ) : (
+              <DashboardCard 
+                title="Membresías por Vencer" 
+                value={membershipsToExpire.length} 
+                icon={<Calendar size={24} />} 
+                color="#EF4444" 
+              />
+            )}
           </div>
           
           {/* Alertas importantes */}
@@ -253,10 +455,8 @@ const Dashboard: React.FC = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold mb-4">Próximos Cumpleaños (30 días)</h3>
               <div className="space-y-4">
-                {members
-                  .filter(member => member.birthDate && member.birthDate.length > 0)
-                  .slice(0, 2)
-                  .map((member, index) => (
+                {upcomingBirthdays.length > 0 ? (
+                  upcomingBirthdays.slice(0, 3).map((member, index) => (
                     <div key={index} className="flex items-center p-3 bg-blue-50 rounded-md">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 font-semibold">
                         {member.firstName.charAt(0)}{member.lastName.charAt(0)}
@@ -264,36 +464,43 @@ const Dashboard: React.FC = () => {
                       <div className="ml-4">
                         <p className="font-medium">{member.firstName} {member.lastName}</p>
                         <p className="text-sm text-gray-500">
-                        {member.birthDate 
-                            ? new Date(member.birthDate).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' }) 
+                          {member.birthDate 
+                            ? new Date(member.birthDate as string).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' }) 
                             : 'Fecha no disponible'}
                         </p>
                       </div>
                     </div>
-                  ))}
-                {members.filter(member => member.birthDate && member.birthDate.length > 0).length === 0 && (
+                  ))
+                ) : (
                   <div className="text-center p-4 bg-gray-50 rounded-md">
                     <p className="text-gray-500">No hay cumpleaños próximos</p>
+                  </div>
+                )}
+                
+                {upcomingBirthdays.length > 3 && (
+                  <div className="text-center mt-2">
+                    <a href="/members" className="text-blue-600 hover:text-blue-800 text-sm">
+                      Ver todos ({upcomingBirthdays.length}) →
+                    </a>
                   </div>
                 )}
               </div>
             </div>
             
-                
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold mb-4">Membresías Próximas a Vencer (15 días)</h3>
               <div className="space-y-4">
-                {(loading || loadingMemberships) && new Date().getTime() - startTime < 5000 ? (
-                    <div className="text-center py-4">
-                      <div className="inline-block h-6 w-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      <p className="mt-2 text-gray-500">Cargando datos...</p>
-                    </div>
-                  ) : membershipsToExpire.length === 0 ? (
-                    <div className="text-center py-4 bg-gray-50 rounded-md">
-                      <p className="text-gray-500">No hay membresías próximas a vencer</p>
-                    </div>
-                  ) : (
-                  membershipsToExpire.slice(0, 2).map((item, index) => {
+                {(loading || loadingMemberships) ? (
+                  <div className="text-center py-4">
+                    <div className="inline-block h-6 w-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="mt-2 text-gray-500">Cargando datos...</p>
+                  </div>
+                ) : membershipsToExpire.length === 0 ? (
+                  <div className="text-center py-4 bg-gray-50 rounded-md">
+                    <p className="text-gray-500">No hay membresías próximas a vencer</p>
+                  </div>
+                ) : (
+                  membershipsToExpire.slice(0, 3).map((item, index) => {
                     const daysToExpire = Math.ceil(
                       (new Date(item.membership.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                     );
@@ -311,18 +518,29 @@ const Dashboard: React.FC = () => {
                             {item.membership.activityName} - Vence en {daysToExpire} días
                           </p>
                         </div>
-                        <button className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600">
+                        <a 
+                          href={`/members?id=${item.member.id}`}
+                          className="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600"
+                        >
                           Renovar
-                        </button>
+                        </a>
                       </div>
                     );
                   })
+                )}
+                
+                {membershipsToExpire.length > 3 && (
+                  <div className="text-center mt-2">
+                    <a href="/members" className="text-blue-600 hover:text-blue-800 text-sm">
+                      Ver todas ({membershipsToExpire.length}) →
+                    </a>
+                  </div>
                 )}
               </div>
             </div>
           </div>
           
-          {/* Gráficos */}
+          {/* Gráficos y actividad reciente */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-lg shadow-md p-6">
               <div className="flex justify-between items-center mb-4">
@@ -345,7 +563,7 @@ const Dashboard: React.FC = () => {
             </div>
             
             {/* Mostrar gráfico de ingresos solo para administradores */}
-            {(userRole === 'admin' || userRole === 'superadmin') && (
+            {(userRole === 'admin' || userRole === 'superadmin') ? (
               <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-semibold">Evolución de Ingresos</h3>
@@ -360,31 +578,48 @@ const Dashboard: React.FC = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />
-                    <Tooltip formatter={(value: number) => [`$${value}`, 'Ingresos']} />
+                    <Tooltip formatter={(value: number) => [`${formatCurrency(value)}`, 'Ingresos']} />
                     <Line type="monotone" dataKey="value" stroke="#10B981" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            )}
-            
-            {/* Mostrar información alternativa para empleados */}
-            {userRole === 'user' && (
+            ) : (
               <div className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Actividad Reciente</h3>
+                  <h3 className="text-lg font-semibold">Últimas Asistencias</h3>
                 </div>
-                <div className="space-y-4">
-                  <div className="p-3 bg-blue-50 rounded-md">
-                    <p className="font-medium">Asistencias del día: {Math.floor(Math.random() * 20) + 10}</p>
-                    <p className="text-sm text-gray-600 mt-1">Última asistencia registrada: {new Date().toLocaleTimeString()}</p>
+                {attendances.length > 0 ? (
+                  <div className="divide-y">
+                    {attendances.slice(0, 5).map(attendance => (
+                      <div key={attendance.id} className="py-3 flex items-center justify-between">
+                        <div className="flex items-center">
+                          <div className="p-2 rounded-full bg-green-50 text-green-600 mr-3">
+                            <UserCheck size={18} />
+                          </div>
+                          <div>
+                            <p className="font-medium">{attendance.memberName}</p>
+                            <p className="text-sm text-gray-500">{attendance.activityName}</p>
+                          </div>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {formatDate(attendance.timestamp)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="p-3 bg-green-50 rounded-md">
-                    <p className="font-medium">Nuevos socios esta semana: {Math.floor(Math.random() * 5) + 1}</p>
+                ) : (
+                  <div className="text-center py-4 bg-gray-50 rounded-md">
+                    <p className="text-gray-500">No hay asistencias registradas</p>
                   </div>
-                  <div className="p-3 bg-purple-50 rounded-md">
-                    <p className="font-medium">Clases programadas para hoy: {Math.floor(Math.random() * 6) + 3}</p>
+                )}
+                
+                {attendances.length > 5 && (
+                  <div className="text-center mt-4">
+                    <a href="/attendance" className="text-blue-600 hover:text-blue-800 text-sm">
+                      Ver todas las asistencias →
+                    </a>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>

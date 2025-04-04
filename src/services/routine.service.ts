@@ -268,14 +268,23 @@ import {
   };
   
   // Obtener las rutinas asignadas a un socio
-  export const getMemberRoutines = async (gymId: string, memberId: string): Promise<MemberRoutine[]> => {
+  export const getMemberRoutines = async (gymId: string, memberId?: string): Promise<MemberRoutine[]> => {
     try {
       const memberRoutinesRef = collection(db, `gyms/${gymId}/memberRoutines`);
-      const q = query(
-        memberRoutinesRef,
-        where('memberId', '==', memberId),
-        orderBy('startDate', 'desc')
-      );
+      let q;
+      
+      if (memberId) {
+        q = query(
+          memberRoutinesRef,
+          where('memberId', '==', memberId),
+          orderBy('startDate', 'desc')
+        );
+      } else {
+        q = query(
+          memberRoutinesRef,
+          orderBy('startDate', 'desc')
+        );
+      }
       
       const querySnapshot = await getDocs(q);
       
