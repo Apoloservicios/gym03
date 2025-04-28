@@ -10,7 +10,8 @@ import MemberPayment from './MemberPayment';
 import MemberAttendanceHistory from './MemberAttendanceHistory';
 import MemberRoutinesTab from './MemberRoutinesTab';
 import useAuth from '../../hooks/useAuth';
-import { getMemberMemberships } from '../../services/member.service';
+import { getMemberMemberships, deleteMembership } from '../../services/member.service';
+import DeleteMembershipModal from '../memberships/DeleteMembershipModal';
 
 interface MemberDetailProps {
   member: Member;
@@ -33,6 +34,10 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
   const [memberships, setMemberships] = useState<MembershipAssignment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  
+  // Estados para el modal de eliminación de membresía
+  const [membershipToDelete, setMembershipToDelete] = useState<MembershipAssignment | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   
   // Cargar membresías del socio
   useEffect(() => {
@@ -118,6 +123,35 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
   const calculateAttendancePercentage = (current: number, max: number) => {
     if (!max) return 0;
     return Math.round((current / max) * 100);
+  };
+  
+  // Función para manejar la eliminación
+  const handleDeleteMembership = async (withRefund: boolean) => {
+    if (!gymData?.id || !member.id || !membershipToDelete?.id) {
+      setError('No se pudo procesar la solicitud');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      await deleteMembership(gymData.id, member.id, membershipToDelete.id, withRefund);
+      
+      // Actualizar la lista de membresías
+      const updatedMemberships = memberships.filter(m => m.id !== membershipToDelete.id);
+      setMemberships(updatedMemberships);
+      
+      setIsDeleteModalOpen(false);
+      setMembershipToDelete(null);
+      
+      // Mostrar mensaje de éxito
+      // TODO: Implementar notificación de éxito
+    } catch (error: any) {
+      console.error('Error deleting membership:', error);
+      setError(error.message || 'Error al eliminar la membresía');
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Función para renderizar la vista activa
@@ -217,6 +251,18 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
                             <span>{formatCurrency(membership.cost)}</span>
                           </div>
                         </div>
+                        
+                        {/* Botón de eliminar membresía */}
+                        <button
+                          onClick={() => {
+                            setMembershipToDelete(membership);
+                            setIsDeleteModalOpen(true);
+                          }}
+                          className="text-red-600 hover:text-red-800 p-1"
+                          title="Eliminar membresía"
+                        >
+                          <Trash size={16} />
+                        </button>
                       </div>
                     </div>
                     
@@ -539,6 +585,19 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
         )}
         {renderActiveView()}
       </div>
+      
+      {/* Modal de eliminación de membresía */}
+      {isDeleteModalOpen && membershipToDelete && (
+        <DeleteMembershipModal
+          membershipName={membershipToDelete.activityName}
+          isPaid={membershipToDelete.paymentStatus === 'paid'}
+          onConfirm={handleDeleteMembership}
+          onCancel={() => {
+            setIsDeleteModalOpen(false);
+            setMembershipToDelete(null);
+          }}
+        />
+      )}
     </div>
   );
 };

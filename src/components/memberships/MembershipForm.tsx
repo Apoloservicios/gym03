@@ -13,6 +13,8 @@ interface FormData {
   cost: number | string;
   paymentStatus: 'paid' | 'pending';
   notes: string;
+  autoRenewal: boolean; // Nuevo campo
+  paymentFrequency: 'single' | 'monthly'; // Nuevo campo
 }
 
 interface FormErrors {
@@ -49,7 +51,9 @@ const MembershipForm: React.FC<MembershipFormProps> = ({ memberId, memberName, o
     startDate: '',
     cost: '',
     paymentStatus: 'pending',
-    notes: ''
+    notes: '',
+    autoRenewal: false,
+    paymentFrequency: 'single'
   });
   
   const [loading, setLoading] = useState<boolean>(false);
@@ -369,6 +373,57 @@ const MembershipForm: React.FC<MembershipFormProps> = ({ memberId, memberName, o
                     disabled={loading || success}
                   />
                   <span className="ml-2 text-sm text-gray-700">Pendiente</span>
+                </label>
+              </div>
+            </div>
+
+
+
+            <div>
+              <div className="flex items-center mt-4">
+                <input
+                  type="checkbox"
+                  id="autoRenewal"
+                  name="autoRenewal"
+                  checked={formData.autoRenewal}
+                  onChange={(e) => setFormData({...formData, autoRenewal: e.target.checked})}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="autoRenewal" className="ml-2 block text-sm text-gray-700">
+                  Renovación automática
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 ml-6">
+                La membresía se renovará automáticamente al vencimiento
+              </p>
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Frecuencia de pago
+              </label>
+              <div className="flex space-x-4">
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    name="paymentFrequency"
+                    value="single"
+                    checked={formData.paymentFrequency === 'single'}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Pago único</span>
+                </label>
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    name="paymentFrequency"
+                    value="monthly"
+                    checked={formData.paymentFrequency === 'monthly'}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">Pago mensual</span>
                 </label>
               </div>
             </div>

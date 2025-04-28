@@ -39,6 +39,10 @@ export interface MembershipAssignment {
   maxAttendances: number;
   currentAttendances: number;
   description: string;
+  // Nuevos campos opcionales para evitar errores
+  autoRenewal?: boolean;
+  paymentFrequency?: 'single' | 'monthly';
+  lastRenewalDate?: string;
 }
 
 // Objeto con funciones útiles relacionadas con estos tipos
@@ -75,7 +79,10 @@ const memberTypes = {
     status: 'active',
     maxAttendances: 0,
     currentAttendances: 0,
-    description: ''
+    description: '',
+    // Agregamos valores por defecto para los nuevos campos
+    autoRenewal: false,
+    paymentFrequency: 'single'
   })
 };
 

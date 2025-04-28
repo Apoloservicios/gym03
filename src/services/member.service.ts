@@ -91,13 +91,16 @@ export const assignMembership = async (
     console.log("Asignando membresía:", membershipData);
     const membershipsRef = collection(db, `gyms/${gymId}/members/${memberId}/memberships`);
     
-    // Agregar membresía
-    const docRef = await addDoc(membershipsRef, {
+    // Asegurar que los nuevos campos tengan valores por defecto
+    const membershipWithDefaults = {
       ...membershipData,
+      autoRenewal: membershipData.autoRenewal !== undefined ? membershipData.autoRenewal : false,
+      paymentFrequency: membershipData.paymentFrequency || 'single',
       createdAt: serverTimestamp()
-    });
+    };
     
-    console.log("Membresía asignada con ID:", docRef.id);
+    // Agregar membresía
+    const docRef = await addDoc(membershipsRef, membershipWithDefaults);
     
     // Si la membresía tiene un costo y está pendiente, agregar a la deuda del socio
     if (membershipData.cost > 0 && membershipData.paymentStatus === 'pending') {
@@ -116,10 +119,74 @@ export const assignMembership = async (
     
     return { 
       id: docRef.id,
-      ...membershipData 
+      ...membershipWithDefaults 
     };
   } catch (error) {
     console.error('Error assigning membership:', error);
+    throw error;
+  }
+};
+
+// Eliminar una membresía de un socio
+export const deleteMembership = async (
+  gymId: string,
+  memberId: string,
+  membershipId: string,
+  withRefund: boolean = false
+): Promise<boolean> => {
+  try {
+    const membershipRef = doc(db, `gyms/${gymId}/members/${memberId}/memberships`, membershipId);
+    
+    // Obtener los datos de la membresía antes de eliminarla
+    const membershipSnap = await getDoc(membershipRef);
+    if (!membershipSnap.exists()) {
+      throw new Error('La membresía no existe');
+    }
+
+    const membershipData = membershipSnap.data() as MembershipAssignment;
+
+    // Si la membresía estaba pagada y se solicita reintegro
+    if (withRefund && membershipData.paymentStatus === 'paid') {
+      // Actualizar la deuda del socio (restar el valor de la membresía)
+      const memberRef = doc(db, `gyms/${gymId}/members`, memberId);
+      const memberSnap = await getDoc(memberRef);
+      
+      if (memberSnap.exists()) {
+        const currentDebt = memberSnap.data().totalDebt || 0;
+        await updateDoc(memberRef, {
+          totalDebt: Math.max(0, currentDebt - membershipData.cost),
+          updatedAt: serverTimestamp()
+        });
+      }
+      
+      // Registrar la transacción de reintegro
+      const transactionsRef = collection(db, `gyms/${gymId}/transactions`);
+      await addDoc(transactionsRef, {
+        type: 'expense',
+        category: 'refund',
+        amount: membershipData.cost,
+        description: `Reintegro por cancelación de membresía: ${membershipData.activityName}`,
+        memberId: memberId,
+        membershipId: membershipId,
+        date: serverTimestamp(),
+        userId: '', // Se debe completar con el ID del usuario que realiza el reintegro
+        userName: '', // Se debe completar con el nombre del usuario que realiza el reintegro
+        paymentMethod: 'cash', // Por defecto, ajustar según sea necesario
+        status: 'completed',
+        notes: 'Reintegro por cancelación de membresía',
+        createdAt: serverTimestamp()
+      });
+    }
+
+    // Actualizar el estado de la membresía a "cancelled" en lugar de eliminarla
+    await updateDoc(membershipRef, {
+      status: 'cancelled',
+      updatedAt: serverTimestamp()
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting membership:', error);
     throw error;
   }
 };
