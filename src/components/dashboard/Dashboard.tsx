@@ -4,16 +4,17 @@ import {
   Users, Calendar, CreditCard, AlertTriangle, TrendingUp, ChevronRight,
   BarChart2, DollarSign, RefreshCw, Filter, User, UserPlus
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+// Reemplazar la importación directa de useNavigate por nuestro servicio
+// import { useNavigate } from 'react-router-dom';
+import { navigateTo } from '../../services/navigation.service';
 import useAuth from '../../hooks/useAuth';
 import { getRecentMembers, getMembersWithUpcomingBirthdays, getExpiredMemberships } from '../../services/member.service';
 import { getDashboardStats } from '../../services/stats.service';
 import { formatCurrency } from '../../utils/formatting.utils';
-import { Member } from '../../types/member.types';
-import { MembershipAssignment } from '../../types/member.types';
-import { formatDate } from '../../utils/date.utils';
+import { Member, MembershipAssignment } from '../../types/member.types';
 import MemberChart from './MemberChart';
 import SalesChart from './SalesChart';
+import { formatDate, formatDateTime } from '../../utils/date.utils';
 
 interface DashboardStats {
   totalMembers: number;
@@ -29,7 +30,8 @@ interface DashboardStats {
 
 const Dashboard: React.FC = () => {
   const { gymData } = useAuth();
-  const navigate = useNavigate();
+  // Eliminar esta línea que causa el error
+  // const navigate = useNavigate();
   
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -99,6 +101,11 @@ const Dashboard: React.FC = () => {
   
   const handleSalesChartPeriodChange = (period: 'month' | '3months' | 'year') => {
     setSalesChartPeriod(period);
+  };
+  
+  // Función de navegación segura
+  const handleNavigate = (path: string) => {
+    navigateTo(path);
   };
   
   if (loading) {
@@ -298,7 +305,7 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Socios Recientes</h2>
               <button 
-                onClick={() => navigate('/members')}
+                onClick={() => handleNavigate('/members')}
                 className="text-blue-600 hover:text-blue-800 flex items-center text-sm"
               >
                 Ver todos <ChevronRight size={16} />
@@ -338,7 +345,7 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Próximos Cumpleaños</h2>
               <button 
-                onClick={() => navigate('/members?filter=birthdays')}
+                onClick={() => handleNavigate('/members?filter=birthdays')}
                 className="text-purple-600 hover:text-purple-800 flex items-center text-sm"
               >
                 Ver todos <ChevronRight size={16} />
@@ -376,7 +383,7 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold">Membresías Vencidas</h2>
               <button 
-                onClick={() => navigate('/members?filter=expired')}
+                onClick={() => handleNavigate('/members?filter=expired')}
                 className="text-yellow-600 hover:text-yellow-800 flex items-center text-sm"
               >
                 Ver todas <ChevronRight size={16} />

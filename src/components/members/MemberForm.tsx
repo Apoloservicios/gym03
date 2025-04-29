@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, Calendar, MapPin, Save, Upload, X } from 'lucide-react';
 import { Member, MemberFormData } from '../../types/member.types';
+import { formatDate, dateToString } from '../../utils/date.utils';
 
 interface FormErrors {
   firstName?: string;
@@ -45,7 +46,8 @@ const MemberForm: React.FC<MemberFormProps> = ({ isEdit = false, initialData = n
         email: initialData.email || '',
         phone: initialData.phone || '',
         address: initialData.address || '',
-        birthDate: initialData.birthDate || '',
+        // Usar dateToString para convertir cualquier formato de fecha a string YYYY-MM-DD
+        birthDate: initialData.birthDate ? dateToString(initialData.birthDate) : '',
         status: initialData.status || 'active',
         photo: null // No podemos cargar el File original, pero mostramos la vista previa
       });

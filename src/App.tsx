@@ -1,5 +1,7 @@
 // src/App.tsx
+import { BrowserRouter as Router } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
+import RouterProvider from './components/common/RouterProvider';
 
 // Nota: importamos desde 'Layout' con L mayúscula para evitar el error de casing
 import Sidebar from './components/Layout/Sidebar';
@@ -167,18 +169,23 @@ const App: React.FC = () => {
     setCurrentPage('dashboard');
   }
   
+  // Envolvemos la aplicación autenticada con Router y RouterProvider
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar 
-        activePage={currentPage} 
-        onNavigate={setCurrentPage} 
-        userRole={userData?.role || 'user'} 
-      />
-      
-      <div className="flex-1 md:ml-64 overflow-y-auto">
-        {renderPage()}
-      </div>
-    </div>
+    <Router>
+      <RouterProvider>
+        <div className="flex h-screen bg-gray-100">
+          <Sidebar 
+            activePage={currentPage} 
+            onNavigate={setCurrentPage} 
+            userRole={userData?.role || 'user'} 
+          />
+          
+          <div className="flex-1 md:ml-64 overflow-y-auto">
+            {renderPage()}
+          </div>
+        </div>
+      </RouterProvider>
+    </Router>
   );
 };
 

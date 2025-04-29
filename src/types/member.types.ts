@@ -1,11 +1,9 @@
 // src/types/member.types.ts
 
-// Primero, podemos crear un tipo unión para las fechas de Firebase
-export type FirebaseDate = {
-  toDate: () => Date;
-  seconds: number;
-  nanoseconds: number;
-} | Date | string;
+import { FirebaseDate as CentralFirebaseDate } from './firebase.types';
+
+// Define un alias para mantener la compatibilidad
+export type FirebaseDate = CentralFirebaseDate;
 
 export interface Member {
   id: string;
@@ -25,6 +23,7 @@ export interface Member {
   // Campo adicional usado en algunas funciones
   daysUntilBirthday?: number;
 }
+
 
 export interface MemberFormData {
   firstName: string;
