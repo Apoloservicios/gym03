@@ -1,6 +1,12 @@
 // src/types/member.types.ts
 
-// Definiciones de tipos/interfaces
+// Primero, podemos crear un tipo unión para las fechas de Firebase
+export type FirebaseDate = {
+  toDate: () => Date;
+  seconds: number;
+  nanoseconds: number;
+} | Date | string;
+
 export interface Member {
   id: string;
   firstName: string;
@@ -8,11 +14,16 @@ export interface Member {
   email: string;
   phone: string;
   address?: string;
-  birthDate?: string;
+  // Usar el tipo específico para fechas de Firebase
+  birthDate?: FirebaseDate;
   photo?: string | null;
   status: 'active' | 'inactive';
   totalDebt: number;
-  lastAttendance?: string;
+  lastAttendance?: FirebaseDate;
+  createdAt?: FirebaseDate;
+  updatedAt?: FirebaseDate;
+  // Campo adicional usado en algunas funciones
+  daysUntilBirthday?: number;
 }
 
 export interface MemberFormData {
@@ -25,7 +36,6 @@ export interface MemberFormData {
   photo: File | null;
   status: 'active' | 'inactive';
 }
-
 export interface MembershipAssignment {
   id?: string;
   memberId: string;
@@ -40,9 +50,11 @@ export interface MembershipAssignment {
   currentAttendances: number;
   description: string;
   // Nuevos campos opcionales para evitar errores
+  memberName?: string; // Añadido para mostrar el nombre del miembro
   autoRenewal?: boolean;
   paymentFrequency?: 'single' | 'monthly';
   lastRenewalDate?: string;
+  daysUntilBirthday?: number; // Para ordenar en cumpleaños
 }
 
 // Objeto con funciones útiles relacionadas con estos tipos

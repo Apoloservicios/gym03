@@ -1,12 +1,11 @@
-// src/components/cashier/CashierDashboard.tsx (corregido)
+// src/components/cashier/CashierDashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, DollarSign, TrendingUp, TrendingDown, PlusCircle, MinusCircle, 
   RefreshCw, AlertCircle, XCircle, CheckCircle, FileText
 } from 'lucide-react';
 import { 
-  getCurrentDailyCash, 
-  getDailyCashByDate, // Aseguramos que esta función está importada
+  getDailyCashByDate, 
   getTransactionsByDate, 
   closeDailyCash,
   openDailyCash
@@ -53,26 +52,17 @@ const CashierDashboard: React.FC = () => {
 
     try {
       // Intentar obtener la caja diaria para la fecha seleccionada
+      // Ahora solo obtenemos los datos si existen, sin crear automáticamente
       try {
-        // Intentamos obtener mediante getDailyCashByDate en lugar de getCurrentDailyCash
-        // para no crear una caja automáticamente si es una fecha distinta a hoy
-        const today = new Date().toISOString().split('T')[0];
-        
-        if (selectedDate === today) {
-          // Si es hoy, usamos getCurrentDailyCash que puede crear la caja automáticamente
-          const current = await getCurrentDailyCash(gymData.id);
-          setDailyCash(current);
-        } else {
-          // Si no es hoy, usamos getDailyCashByDate que solo obtiene sin crear
-          const current = await getDailyCashByDate(gymData.id, selectedDate);
-          setDailyCash(current);
-        }
+        // Obtener la caja diaria para la fecha seleccionada
+        const cashData = await getDailyCashByDate(gymData.id, selectedDate);
+        setDailyCash(cashData); // Puede ser null si no existe
       } catch (error) {
         console.log("No hay caja para esta fecha");
         setDailyCash(null);
       }
 
-      // Cargar transacciones del día
+      // Cargar transacciones del día (incluso si no hay caja abierta)
       const dayTransactions = await getTransactionsByDate(gymData.id, selectedDate);
       setTransactions(dayTransactions);
     } catch (err: any) {
@@ -113,6 +103,11 @@ const CashierDashboard: React.FC = () => {
         await loadDailyCashData();
         // Volver a la vista de resumen
         setView('summary');
+        
+        // Limpiar mensaje de éxito después de un tiempo
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
       } else {
         throw new Error(result.error || 'Error al abrir la caja');
       }
@@ -147,6 +142,11 @@ const CashierDashboard: React.FC = () => {
         await loadDailyCashData();
         // Volver a la vista de resumen
         setView('summary');
+        
+        // Limpiar mensaje de éxito después de un tiempo
+        setTimeout(() => {
+          setSuccess('');
+        }, 3000);
       } else {
         throw new Error(result.error || 'Error al cerrar la caja');
       }
@@ -171,6 +171,7 @@ const CashierDashboard: React.FC = () => {
 
   // Renderizar la vista actual según el estado
   const renderCurrentView = () => {
+    // Si estamos cargando y no es la vista de apertura
     if (loading && view !== 'open') {
       return (
         <div className="flex justify-center items-center py-12">
@@ -180,6 +181,40 @@ const CashierDashboard: React.FC = () => {
       );
     }
 
+    // Si la vista es de apertura o no hay caja diaria, mostrar el formulario de apertura
+    if (view === 'open' || (!dailyCash && selectedDate === new Date().toISOString().split('T')[0])) {
+      return (
+        <OpenBoxForm
+          selectedDate={selectedDate}
+          isReopening={dailyCash?.status === 'closed'}
+          onOpen={handleOpenBox}
+          onCancel={() => setView('summary')}
+        />
+      );
+    }
+
+    // Si no hay caja para la fecha seleccionada, mostrar mensaje y opción de abrir
+    if (!dailyCash) {
+      return (
+        <div className="p-6 text-center">
+          <div className="mb-4">
+            <h3 className="text-lg font-medium text-gray-900">No hay caja abierta para esta fecha</h3>
+            <p className="mt-2 text-gray-500">No se ha abierto caja para el día {new Date(selectedDate).toLocaleDateString('es-AR')}</p>
+          </div>
+          
+          {selectedDate === new Date().toISOString().split('T')[0] && (
+            <button
+              onClick={() => setView('open')}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Abrir Caja
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // Si hay caja diaria, mostrar la vista correspondiente
     switch (view) {
       case 'income':
         return (
@@ -189,6 +224,11 @@ const CashierDashboard: React.FC = () => {
               setSuccess('Ingreso registrado correctamente');
               loadDailyCashData();
               setView('summary');
+              
+              // Limpiar mensaje de éxito
+              setTimeout(() => {
+                setSuccess('');
+              }, 3000);
             }}
             onCancel={() => setView('summary')}
           />
@@ -201,6 +241,11 @@ const CashierDashboard: React.FC = () => {
               setSuccess('Gasto registrado correctamente');
               loadDailyCashData();
               setView('summary');
+              
+              // Limpiar mensaje de éxito
+              setTimeout(() => {
+                setSuccess('');
+              }, 3000);
             }}
             onCancel={() => setView('summary')}
           />
@@ -214,7 +259,6 @@ const CashierDashboard: React.FC = () => {
           />
         );
       case 'close':
-        if (!dailyCash) return null;
         return (
           <CloseBoxForm
             dailyCash={dailyCash}
@@ -223,29 +267,8 @@ const CashierDashboard: React.FC = () => {
             onCancel={() => setView('summary')}
           />
         );
-      case 'open':
-        return (
-          <OpenBoxForm
-            selectedDate={selectedDate}
-            isReopening={Boolean(dailyCash && dailyCash.status === 'closed')} // Corregido aquí
-            onOpen={handleOpenBox}
-            onCancel={() => setView('summary')}
-          />
-        );
       case 'summary':
       default:
-        // Si no hay caja para esta fecha, mostrar formulario de apertura directamente
-        if (!dailyCash || !dailyCash.id) {
-          return (
-            <OpenBoxForm
-              selectedDate={selectedDate}
-              isReopening={false} // Aquí no hay error porque pasamos un booleano literal
-              onOpen={handleOpenBox}
-              onCancel={() => window.history.back()}
-            />
-          );
-        }
-        
         return (
           <CashierSummary
             dailyCash={dailyCash}
@@ -272,18 +295,21 @@ const CashierDashboard: React.FC = () => {
 
   // Determinar si se puede abrir/reabrir la caja
   const canOpenBox = (): boolean => {
-    // Si no hay datos de caja, se puede abrir
-    if (!dailyCash) return true;
+    // Si no hay datos de caja, se puede abrir (si es hoy)
+    if (!dailyCash) {
+      const today = new Date().toISOString().split('T')[0];
+      return selectedDate === today;
+    }
     
-    // Si la caja está cerrada, se puede reabrir
-    if (dailyCash.status === 'closed') return true;
+    // Si la caja está cerrada, se puede reabrir (si es hoy)
+    if (dailyCash.status === 'closed') {
+      const today = new Date().toISOString().split('T')[0];
+      return selectedDate === today;
+    }
     
     // En cualquier otro caso, no se puede abrir
     return false;
   };
-  
-  // Verificar si hay datos de caja para la fecha seleccionada
-  const hasNoCashForSelectedDate = !dailyCash || Object.keys(dailyCash).length === 0;
 
   return (
     <div className="p-6">
@@ -347,8 +373,8 @@ const CashierDashboard: React.FC = () => {
         </div>
       )}
       
-      {/* Estado de la caja */}
-      {dailyCash && dailyCash.id ? (
+      {/* Estado de la caja (solo si existe) */}
+      {dailyCash && dailyCash.id && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col md:flex-row justify-between">
             <div className="mb-4 md:mb-0">
@@ -482,18 +508,17 @@ const CashierDashboard: React.FC = () => {
             )}
           </div>
         </div>
-      ) : (
-        // Mostrar un mensaje si no hay caja y dar opción de abrirla
+      )}
+      
+      {/* Si no hay caja y no estamos en vista específica, mostramos un botón para abrir */}
+      {!dailyCash && selectedDate === new Date().toISOString().split('T')[0] && view === 'summary' && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6 text-center">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold">
-              No hay caja abierta para {new Date(selectedDate).toLocaleDateString('es-AR')}
-            </h2>
-            <p className="text-gray-600 mt-2">
-              ¿Desea abrir la caja para esta fecha?
-            </p>
-          </div>
-          
+          <h2 className="text-lg font-semibold mb-4">
+            No hay caja abierta para {new Date(selectedDate).toLocaleDateString('es-AR')}
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Para registrar ingresos y egresos, primero debe abrir la caja diaria.
+          </p>
           <button
             onClick={() => setView('open')}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center mx-auto"

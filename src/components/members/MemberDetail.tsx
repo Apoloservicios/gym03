@@ -1,7 +1,6 @@
 // src/components/members/MemberDetail.tsx
 
 import React, { useState, useEffect } from 'react';
-import { Mail, Phone, Calendar, MapPin, Edit, Trash, QrCode, CreditCard, Plus, Clock, DollarSign, ChevronDown, ChevronUp, FileText, History, User, Dumbbell } from 'lucide-react';
 import { Member } from '../../types/member.types';
 import { MembershipAssignment } from '../../types/member.types';
 import { formatCurrency } from '../../utils/formatting.utils';
@@ -12,6 +11,8 @@ import MemberRoutinesTab from './MemberRoutinesTab';
 import useAuth from '../../hooks/useAuth';
 import { getMemberMemberships, deleteMembership } from '../../services/member.service';
 import DeleteMembershipModal from '../memberships/DeleteMembershipModal';
+import { Mail, Phone, Calendar, MapPin, Edit, Trash, QrCode, CreditCard, Plus, Clock, DollarSign, 
+  ChevronDown, ChevronUp, FileText, History, User, Dumbbell, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface MemberDetailProps {
   member: Member;
@@ -34,6 +35,7 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
   const [memberships, setMemberships] = useState<MembershipAssignment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState<string>('');
   
   // Estados para el modal de eliminación de membresía
   const [membershipToDelete, setMembershipToDelete] = useState<MembershipAssignment | null>(null);
@@ -100,6 +102,8 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
         return 'bg-green-100 text-green-800';
       case 'expired':
         return 'bg-red-100 text-red-800';
+      case 'cancelled':
+        return 'bg-gray-100 text-gray-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
       default:
@@ -133,22 +137,33 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
     }
     
     setLoading(true);
+    setError('');
     
     try {
       await deleteMembership(gymData.id, member.id, membershipToDelete.id, withRefund);
       
-      // Actualizar la lista de membresías
-      const updatedMemberships = memberships.filter(m => m.id !== membershipToDelete.id);
-      setMemberships(updatedMemberships);
+      // Recargar todas las membresías actualizadas en lugar de simplemente filtrar la eliminada
+      // Esto asegura que tengamos los estados actualizados de todas las membresías desde la BD
+      const refreshedMemberships = await getMemberMemberships(gymData.id, member.id);
+      setMemberships(refreshedMemberships);
       
+      // Mostrar mensaje de éxito
+      setSuccess(`Membresía ${membershipToDelete.activityName} cancelada exitosamente`);
+      
+      // Cerrar el modal
       setIsDeleteModalOpen(false);
       setMembershipToDelete(null);
       
-      // Mostrar mensaje de éxito
-      // TODO: Implementar notificación de éxito
+      // Limpiar el mensaje de éxito después de un tiempo
+      setTimeout(() => {
+        setSuccess('');
+      }, 3000);
     } catch (error: any) {
-      console.error('Error deleting membership:', error);
-      setError(error.message || 'Error al eliminar la membresía');
+      console.error('Error cancelling membership:', error);
+      setError(error.message || 'Error al cancelar la membresía');
+      
+      // Mantener el modal abierto en caso de error para que el usuario pueda intentarlo de nuevo
+      setIsDeleteModalOpen(false);
     } finally {
       setLoading(false);
     }
@@ -232,7 +247,9 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
                         <h3 className="font-medium">{membership.activityName}</h3>
                         <div className="flex items-center mt-1 space-x-2">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusStyles(membership.status)}`}>
-                            {membership.status === 'active' ? 'Activa' : membership.status === 'expired' ? 'Vencida' : 'Cancelada'}
+                            {membership.status === 'active' ? 'Activa' : 
+                             membership.status === 'expired' ? 'Vencida' : 
+                             membership.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
                           </span>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusStyles(membership.paymentStatus)}`}>
                             {membership.paymentStatus === 'paid' ? 'Pagada' : 'Pendiente'}
@@ -252,17 +269,19 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
                           </div>
                         </div>
                         
-                        {/* Botón de eliminar membresía */}
-                        <button
-                          onClick={() => {
-                            setMembershipToDelete(membership);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          className="text-red-600 hover:text-red-800 p-1"
-                          title="Eliminar membresía"
-                        >
-                          <Trash size={16} />
-                        </button>
+                        {/* Mostrar botón de eliminar solo si la membresía no está ya cancelada */}
+                        {membership.status !== 'cancelled' && (
+                          <button
+                            onClick={() => {
+                              setMembershipToDelete(membership);
+                              setIsDeleteModalOpen(true);
+                            }}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Cancelar membresía"
+                          >
+                            <Trash size={16} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     
@@ -579,10 +598,19 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
       {/* Contenido según la vista activa */}
       <div className="p-6">
         {error && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md flex items-center">
+            <AlertCircle size={18} className="mr-2" />
             {error}
           </div>
         )}
+        
+        {success && (
+          <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md flex items-center">
+            <CheckCircle size={18} className="mr-2" />
+            {success}
+          </div>
+        )}
+        
         {renderActiveView()}
       </div>
       
@@ -591,6 +619,7 @@ const MemberDetail: React.FC<MemberDetailProps> = ({
         <DeleteMembershipModal
           membershipName={membershipToDelete.activityName}
           isPaid={membershipToDelete.paymentStatus === 'paid'}
+          memberName={`${member.firstName} ${member.lastName}`}
           onConfirm={handleDeleteMembership}
           onCancel={() => {
             setIsDeleteModalOpen(false);

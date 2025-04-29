@@ -12,8 +12,7 @@ import {
   where, 
   orderBy, 
   Timestamp, 
-  serverTimestamp, 
-  limit 
+  serverTimestamp 
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { 
@@ -24,51 +23,8 @@ import {
   TransactionExpenseCategory 
 } from '../types/gym.types';
 
-// Obtener la caja diaria actual o crearla si no existe
-export const getCurrentDailyCash = async (gymId: string): Promise<DailyCash> => {
-  try {
-    // Obtener la fecha actual en formato yyyy-MM-dd
-    const today = new Date();
-    const formattedDate = today.toISOString().split('T')[0];
-    
-    // Referencia al documento de la caja del día
-    const dailyCashRef = doc(db, `gyms/${gymId}/dailyCash`, formattedDate);
-    const dailyCashSnap = await getDoc(dailyCashRef);
-    
-    if (dailyCashSnap.exists()) {
-      // Si ya existe un registro para hoy, retornarlo
-      return {
-        id: dailyCashSnap.id,
-        ...dailyCashSnap.data()
-      } as DailyCash;
-    } else {
-      // Si no existe, crear un nuevo registro de caja diaria
-      const newDailyCash = {
-        date: formattedDate,
-        openingTime: Timestamp.now(),
-        openingAmount: 0, // Se asume que se inicia con 0, podría ser configurable
-        totalIncome: 0,
-        totalExpense: 0,
-        membershipIncome: 0,
-        otherIncome: 0,
-        status: 'open',
-        openedBy: '', // Esto se debería completar con el ID del usuario actual
-        notes: 'Caja diaria abierta automáticamente',
-        createdAt: serverTimestamp()
-      };
-      
-      await setDoc(dailyCashRef, newDailyCash);
-      
-      return {
-        id: formattedDate,
-        ...newDailyCash
-      } as DailyCash;
-    }
-  } catch (error) {
-    console.error('Error getting current daily cash:', error);
-    throw error;
-  }
-};
+
+// Elimina getCurrentDailyCash y reemplazamos por getDailyCashByDate
 
 // Obtener registro de caja diaria por fecha
 export const getDailyCashByDate = async (gymId: string, date: string): Promise<DailyCash | null> => {
@@ -141,6 +97,23 @@ export const registerExtraIncome = async (
     const dailyCashRef = doc(db, `gyms/${gymId}/dailyCash`, data.date);
     const dailyCashSnap = await getDoc(dailyCashRef);
     
+    // Verificar si existe la caja diaria
+    if (!dailyCashSnap.exists()) {
+      return {
+        success: false,
+        error: 'No hay caja abierta para esta fecha. Debe abrir la caja primero.'
+      };
+    }
+    
+    // Verificar el estado de la caja
+    const dailyCashData = dailyCashSnap.data() as DailyCash;
+    if (dailyCashData.status === 'closed') {
+      return {
+        success: false,
+        error: 'La caja de esta fecha está cerrada. No se pueden registrar más transacciones.'
+      };
+    }
+    
     // Validar que la categoría es válida para ingresos
     const category = data.category || 'extra';
     const validCategories: TransactionIncomeCategory[] = ['membership', 'extra', 'product', 'service', 'other'];
@@ -170,31 +143,15 @@ export const registerExtraIncome = async (
     // Crear la transacción
     const transactionRef = await addDoc(transactionsRef, transactionData);
     
-    if (dailyCashSnap.exists()) {
-      // Actualizar el registro existente
-      const dailyCashData = dailyCashSnap.data() as DailyCash;
-      
-      await updateDoc(dailyCashRef, {
-        totalIncome: (dailyCashData.totalIncome || 0) + data.amount,
-        otherIncome: (dailyCashData.otherIncome || 0) + data.amount,
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      // Crear un nuevo registro de caja diaria
-      await setDoc(dailyCashRef, {
-        date: data.date,
-        openingTime: Timestamp.now(),
-        openingAmount: 0,
-        totalIncome: data.amount,
-        totalExpense: 0,
-        membershipIncome: 0,
-        otherIncome: data.amount,
-        status: 'open',
-        openedBy: data.userId,
-        notes: 'Creado automáticamente al registrar un ingreso',
-        createdAt: serverTimestamp()
-      });
-    }
+    // Actualizar registro de caja diaria
+    const totalIncome = (dailyCashData.totalIncome || 0) + data.amount;
+    const otherIncome = (dailyCashData.otherIncome || 0) + data.amount;
+    
+    await updateDoc(dailyCashRef, {
+      totalIncome: totalIncome,
+      otherIncome: otherIncome,
+      updatedAt: serverTimestamp()
+    });
     
     return {
       success: true,
@@ -228,9 +185,26 @@ export const registerExpense = async (
     const dailyCashRef = doc(db, `gyms/${gymId}/dailyCash`, data.date);
     const dailyCashSnap = await getDoc(dailyCashRef);
     
+    // Verificar si existe la caja diaria
+    if (!dailyCashSnap.exists()) {
+      return {
+        success: false,
+        error: 'No hay caja abierta para esta fecha. Debe abrir la caja primero.'
+      };
+    }
+    
+    // Verificar el estado de la caja
+    const dailyCashData = dailyCashSnap.data() as DailyCash;
+    if (dailyCashData.status === 'closed') {
+      return {
+        success: false,
+        error: 'La caja de esta fecha está cerrada. No se pueden registrar más transacciones.'
+      };
+    }
+    
     // Validar que la categoría es válida para gastos
     const category = data.category || 'withdrawal';
-    const validCategories: TransactionExpenseCategory[] = ['withdrawal', 'supplier', 'services', 'maintenance', 'salary', 'other'];
+    const validCategories: TransactionExpenseCategory[] = ['withdrawal', 'supplier', 'services', 'maintenance', 'salary', 'other', 'refund'];
     
     if (!validCategories.includes(category as TransactionExpenseCategory)) {
       throw new Error(`Categoría inválida para gastos: ${category}`);
@@ -257,30 +231,13 @@ export const registerExpense = async (
     // Crear la transacción
     const transactionRef = await addDoc(transactionsRef, transactionData);
     
-    if (dailyCashSnap.exists()) {
-      // Actualizar el registro existente
-      const dailyCashData = dailyCashSnap.data() as DailyCash;
-      
-      await updateDoc(dailyCashRef, {
-        totalExpense: (dailyCashData.totalExpense || 0) + data.amount,
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      // Crear un nuevo registro de caja diaria
-      await setDoc(dailyCashRef, {
-        date: data.date,
-        openingTime: Timestamp.now(),
-        openingAmount: 0,
-        totalIncome: 0,
-        totalExpense: data.amount,
-        membershipIncome: 0,
-        otherIncome: 0,
-        status: 'open',
-        openedBy: data.userId,
-        notes: 'Creado automáticamente al registrar un gasto',
-        createdAt: serverTimestamp()
-      });
-    }
+    // Actualizar registro de caja diaria
+    const totalExpense = (dailyCashData.totalExpense || 0) + data.amount;
+    
+    await updateDoc(dailyCashRef, {
+      totalExpense: totalExpense,
+      updatedAt: serverTimestamp()
+    });
     
     return {
       success: true,
@@ -316,12 +273,21 @@ export const closeDailyCash = async (
       };
     }
     
+    // Verificar que la caja esté abierta
+    const dailyCashData = dailyCashSnap.data() as DailyCash;
+    if (dailyCashData.status !== 'open') {
+      return {
+        success: false,
+        error: 'La caja ya está cerrada'
+      };
+    }
+    
     await updateDoc(dailyCashRef, {
       closingTime: Timestamp.now(),
       closingAmount: data.closingAmount,
       status: 'closed',
       closedBy: data.userId,
-      notes: data.notes,
+      notes: data.notes || dailyCashData.notes,
       updatedAt: serverTimestamp()
     });
     
@@ -333,6 +299,81 @@ export const closeDailyCash = async (
     return {
       success: false,
       error: error.message || 'Error al cerrar la caja'
+    };
+  }
+};
+
+// Abrir o reabrir la caja diaria
+export const openDailyCash = async (
+  gymId: string,
+  date: string,
+  data: {
+    openingAmount: number;
+    notes?: string;
+    userId: string;
+  }
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const dailyCashRef = doc(db, `gyms/${gymId}/dailyCash`, date);
+    const dailyCashSnap = await getDoc(dailyCashRef);
+    
+    // Verificar si es hoy
+    const today = new Date().toISOString().split('T')[0];
+    if (date !== today) {
+      return {
+        success: false,
+        error: 'Solo se puede abrir o reabrir la caja del día actual'
+      };
+    }
+    
+    if (dailyCashSnap.exists()) {
+      // Si ya existe un registro, verificar si está cerrado
+      const dailyCashData = dailyCashSnap.data() as DailyCash;
+      
+      if (dailyCashData.status === 'open') {
+        return {
+          success: false,
+          error: 'La caja para esta fecha ya se encuentra abierta'
+        };
+      }
+      
+      // Reabrir la caja si estaba cerrada
+      await updateDoc(dailyCashRef, {
+        status: 'open',
+        openingTime: Timestamp.now(),
+        openingAmount: data.openingAmount,
+        notes: data.notes || 'Caja reabierta manualmente',
+        closingTime: null,
+        closingAmount: null,
+        closedBy: null,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Crear un nuevo registro de caja diaria
+      await setDoc(dailyCashRef, {
+        date: date,
+        openingTime: Timestamp.now(),
+        openingAmount: data.openingAmount,
+        totalIncome: 0,
+        totalExpense: 0,
+        membershipIncome: 0,
+        otherIncome: 0,
+        status: 'open',
+        openedBy: data.userId,
+        notes: data.notes || 'Caja abierta manualmente',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+    
+    return {
+      success: true
+    };
+  } catch (error: any) {
+    console.error('Error opening daily cash:', error);
+    return {
+      success: false,
+      error: error.message || 'Error al abrir la caja'
     };
   }
 };
@@ -458,73 +499,9 @@ export const getTransactionsSummary = async (
     console.error('Error getting transactions summary:', error);
     throw error;
   }
-
-};
-
-// Abrir o reabrir la caja diaria
-export const openDailyCash = async (
-  gymId: string,
-  date: string,
-  data: {
-    openingAmount: number;
-    notes?: string;
-    userId: string;
-  }
-): Promise<{ success: boolean; error?: string }> => {
-  try {
-    const dailyCashRef = doc(db, `gyms/${gymId}/dailyCash`, date);
-    const dailyCashSnap = await getDoc(dailyCashRef);
-    
-    if (dailyCashSnap.exists()) {
-      // Si ya existe un registro, verificar si está cerrado
-      const dailyCashData = dailyCashSnap.data() as DailyCash;
-      
-      if (dailyCashData.status === 'open') {
-        return {
-          success: false,
-          error: 'La caja para esta fecha ya se encuentra abierta'
-        };
-      }
-      
-      // Reabrir la caja si estaba cerrada
-      await updateDoc(dailyCashRef, {
-        status: 'open',
-        openingTime: Timestamp.now(),
-        openingAmount: data.openingAmount,
-        notes: data.notes || 'Caja reabierta manualmente',
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      // Crear un nuevo registro de caja diaria
-      await setDoc(dailyCashRef, {
-        date: date,
-        openingTime: Timestamp.now(),
-        openingAmount: data.openingAmount,
-        totalIncome: 0,
-        totalExpense: 0,
-        membershipIncome: 0,
-        otherIncome: 0,
-        status: 'open',
-        openedBy: data.userId,
-        notes: data.notes || 'Caja abierta manualmente',
-        createdAt: serverTimestamp()
-      });
-    }
-    
-    return {
-      success: true
-    };
-  } catch (error: any) {
-    console.error('Error opening daily cash:', error);
-    return {
-      success: false,
-      error: error.message || 'Error al abrir la caja'
-    };
-  }
 };
 
 export default {
-  getCurrentDailyCash,
   getDailyCashByDate,
   getDailyCashForDateRange,
   registerExtraIncome,

@@ -1,3 +1,4 @@
+// src/services/member.service.ts
 import { 
   collection, 
   doc, 
@@ -11,11 +12,56 @@ import {
   where,
   orderBy,
   Timestamp,
-  serverTimestamp
+  serverTimestamp,
+  limit as limitQuery
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Member, MemberFormData, MembershipAssignment } from '../types/member.types';
 import { uploadToCloudinary } from '../utils/cloudinary.utils';
+import { Transaction } from '../types/gym.types';
+import { registerExtraIncome, registerExpense } from './dailyCash.service';
+import { formatDate } from '../utils/date.utils';
+
+/**
+ * Función auxiliar para convertir cualquier tipo de fecha a un objeto Date
+ */
+/**
+ * Función auxiliar para convertir cualquier tipo de fecha a un objeto Date
+ */
+function safelyConvertToDate(dateValue: any): Date | null {
+  if (!dateValue) {
+    return null;
+  }
+
+  try {
+    if (typeof dateValue === 'string') {
+      return new Date(dateValue);
+    } 
+    else if (typeof dateValue === 'object') {
+      // Si es un objeto timestamp de Firebase con método toDate
+      if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+        return dateValue.toDate();
+      } 
+      // Si es un objeto Date directamente
+      else if (dateValue instanceof Date) {
+        return dateValue;
+      }
+      // Si es un objeto con timestamp en segundos
+      else if (dateValue.seconds !== undefined) {
+        return new Date(dateValue.seconds * 1000);
+      }
+    }
+
+    // Intentar convertir directamente
+    const result = new Date(dateValue);
+    return isNaN(result.getTime()) ? null : result;
+
+  } catch (error) {
+    console.error('Error converting date:', error);
+    return null;
+  }
+}
+
 
 // Agregar un nuevo socio
 export const addMember = async (gymId: string, memberData: MemberFormData): Promise<Member> => {
@@ -79,8 +125,6 @@ export const addMember = async (gymId: string, memberData: MemberFormData): Prom
   }
 };
 
-// El resto del archivo se mantiene igual...
-
 // Asignar membresía a un socio
 export const assignMembership = async (
   gymId: string, 
@@ -135,50 +179,56 @@ export const deleteMembership = async (
   withRefund: boolean = false
 ): Promise<boolean> => {
   try {
-    const membershipRef = doc(db, `gyms/${gymId}/members/${memberId}/memberships`, membershipId);
+    // Obtener datos del miembro
+    const memberRef = doc(db, `gyms/${gymId}/members`, memberId);
+    const memberSnap = await getDoc(memberRef);
     
-    // Obtener los datos de la membresía antes de eliminarla
+    if (!memberSnap.exists()) {
+      throw new Error('El socio no existe');
+    }
+    
+    const memberData = memberSnap.data() as Member;
+    
+    // Obtener datos de la membresía
+    const membershipRef = doc(db, `gyms/${gymId}/members/${memberId}/memberships`, membershipId);
     const membershipSnap = await getDoc(membershipRef);
+    
     if (!membershipSnap.exists()) {
       throw new Error('La membresía no existe');
     }
 
     const membershipData = membershipSnap.data() as MembershipAssignment;
+    
+    // Verificar el estado actual de la membresía
+    if (membershipData.status === 'cancelled') {
+      throw new Error('Esta membresía ya ha sido cancelada previamente');
+    }
 
     // Si la membresía estaba pagada y se solicita reintegro
     if (withRefund && membershipData.paymentStatus === 'paid') {
-      // Actualizar la deuda del socio (restar el valor de la membresía)
-      const memberRef = doc(db, `gyms/${gymId}/members`, memberId);
-      const memberSnap = await getDoc(memberRef);
+      // Obtener la fecha actual
+      const today = new Date().toISOString().split('T')[0];
       
-      if (memberSnap.exists()) {
-        const currentDebt = memberSnap.data().totalDebt || 0;
-        await updateDoc(memberRef, {
-          totalDebt: Math.max(0, currentDebt - membershipData.cost),
-          updatedAt: serverTimestamp()
-        });
+      // Registrar el reintegro como un egreso en la caja diaria
+      const refundResult = await registerExpense(gymId, {
+        amount: membershipData.cost,
+        description: `Reintegro por cancelación de membresía: ${membershipData.activityName} para ${memberData.firstName} ${memberData.lastName}`,
+        paymentMethod: 'cash', // Por defecto, aunque podría ser un parámetro
+        date: today,
+        userId: 'system', // Idealmente debería ser el ID del usuario que realiza la acción
+        userName: 'Sistema', // Idealmente debería ser el nombre del usuario
+        category: 'refund',
+        notes: `Reintegro por cancelación de membresía ID: ${membershipId}`
+      });
+      
+      if (!refundResult.success) {
+        throw new Error('Error al registrar el reintegro: ' + refundResult.error);
       }
       
-      // Registrar la transacción de reintegro
-      const transactionsRef = collection(db, `gyms/${gymId}/transactions`);
-      await addDoc(transactionsRef, {
-        type: 'expense',
-        category: 'refund',
-        amount: membershipData.cost,
-        description: `Reintegro por cancelación de membresía: ${membershipData.activityName}`,
-        memberId: memberId,
-        membershipId: membershipId,
-        date: serverTimestamp(),
-        userId: '', // Se debe completar con el ID del usuario que realiza el reintegro
-        userName: '', // Se debe completar con el nombre del usuario que realiza el reintegro
-        paymentMethod: 'cash', // Por defecto, ajustar según sea necesario
-        status: 'completed',
-        notes: 'Reintegro por cancelación de membresía',
-        createdAt: serverTimestamp()
-      });
+      console.log('Reintegro registrado correctamente en caja diaria');
     }
 
-    // Actualizar el estado de la membresía a "cancelled" en lugar de eliminarla
+    // Actualizar estado de la membresía a "cancelled"
     await updateDoc(membershipRef, {
       status: 'cancelled',
       updatedAt: serverTimestamp()
@@ -240,8 +290,12 @@ export const getMemberMemberships = async (gymId: string, memberId: string): Pro
       if (a.status !== 'active' && b.status === 'active') return 1;
       
       // Si ambas tienen el mismo estado, ordenar por fecha de finalización (más recientes primero)
-      const dateA = new Date(a.endDate);
-      const dateB = new Date(b.endDate);
+      const dateA = safelyConvertToDate(a.endDate);
+      const dateB = safelyConvertToDate(b.endDate);
+      
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      
       return dateB.getTime() - dateA.getTime();
     });
   } catch (error) {
@@ -302,10 +356,162 @@ export const updateMember = async (gymId: string, memberId: string, memberData: 
   }
 };
 
+// Obtener miembros recientes
+export const getRecentMembers = async (gymId: string, limit: number = 5): Promise<Member[]> => {
+  try {
+    const membersRef = collection(db, `gyms/${gymId}/members`);
+    const q = query(
+      membersRef,
+      orderBy('createdAt', 'desc'),
+      limitQuery(limit)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    const members: Member[] = [];
+    querySnapshot.forEach(doc => {
+      members.push({
+        id: doc.id,
+        ...doc.data()
+      } as Member);
+    });
+    
+    return members;
+  } catch (error) {
+    console.error('Error getting recent members:', error);
+    throw error;
+  }
+};
+
+// Obtener miembros con cumpleaños próximos
+// Función auxiliar para convertir fechas de forma segura
+
+
+// Obtener miembros con cumpleaños próximos
+export const getMembersWithUpcomingBirthdays = async (
+  gymId: string, 
+  daysAhead: number = 30,
+  limit: number = 5
+): Promise<Member[]> => {
+  try {
+    const membersRef = collection(db, `gyms/${gymId}/members`);
+    const querySnapshot = await getDocs(membersRef);
+    
+    const today = new Date();
+    const members: Member[] = [];
+    
+    querySnapshot.forEach(doc => {
+      const member = { id: doc.id, ...doc.data() } as Member;
+      
+      const birthDate = safelyConvertToDate(member.birthDate);
+      if (!birthDate) return; // Saltar si no se pudo convertir
+      
+      const thisYear = today.getFullYear();
+      const birthMonth = birthDate.getMonth();
+      const birthDay = birthDate.getDate();
+      
+      const thisYearBirthday = new Date(thisYear, birthMonth, birthDay);
+      if (thisYearBirthday < today) {
+        thisYearBirthday.setFullYear(thisYear + 1);
+      }
+
+      const diffTime = thisYearBirthday.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays >= 0 && diffDays <= daysAhead) {
+        members.push({
+          ...member,
+          daysUntilBirthday: diffDays
+        } as Member);
+      }
+    });
+    
+    members.sort((a, b) => (a as any).daysUntilBirthday - (b as any).daysUntilBirthday);
+    
+    return members.slice(0, limit);
+  } catch (error) {
+    console.error('Error getting members with upcoming birthdays:', error);
+    throw error;
+  }
+};
+
+
+// Obtener membresías vencidas o por vencer
+export const getExpiredMemberships = async (
+  gymId: string,
+  limit: number = 5
+): Promise<MembershipAssignment[]> => {
+  try {
+    const members: Member[] = [];
+    const expiredMemberships: MembershipAssignment[] = [];
+    
+    // Primero obtenemos todos los miembros
+    const membersRef = collection(db, `gyms/${gymId}/members`);
+    const membersSnapshot = await getDocs(membersRef);
+    
+    membersSnapshot.forEach(doc => {
+      members.push({
+        id: doc.id,
+        ...doc.data()
+      } as Member);
+    });
+    
+    // Obtener la fecha actual
+    const today = new Date();
+    
+    // Para cada miembro, buscar sus membresías
+    for (const member of members) {
+      const membershipsRef = collection(db, `gyms/${gymId}/members/${member.id}/memberships`);
+      const q = query(membershipsRef, where('status', '==', 'active'));
+      const membershipsSnapshot = await getDocs(q);
+      
+      membershipsSnapshot.forEach(doc => {
+        const membership = { id: doc.id, ...doc.data() } as MembershipAssignment;
+        
+        // Verificar si la membresía ya está vencida
+        // Usar nuestra función auxiliar para convertir la fecha de manera segura
+        const endDate = safelyConvertToDate(membership.endDate);
+        
+        // Solo procesamos si pudimos convertir la fecha correctamente
+        if (endDate && endDate < today) {
+          // Agregar el nombre del miembro para mostrar
+          expiredMemberships.push({
+            ...membership,
+            memberName: `${member.firstName} ${member.lastName}`
+          });
+        }
+      });
+    }
+    
+    // Ordenar por fecha de vencimiento (más antiguas primero)
+    expiredMemberships.sort((a, b) => {
+      // Convertir cada fecha para la comparación de manera segura
+      const dateA = safelyConvertToDate(a.endDate);
+      const dateB = safelyConvertToDate(b.endDate);
+      
+      // Si alguna fecha es null, ponerla al final
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      
+      return dateA.getTime() - dateB.getTime();
+    });
+    
+    // Limitar la cantidad de resultados
+    return expiredMemberships.slice(0, limit);
+  } catch (error) {
+    console.error('Error getting expired memberships:', error);
+    throw error;
+  }
+};
+
 export default {
   addMember,
   assignMembership,
+  deleteMembership,
   generateMemberQR,
   getMemberMemberships,
-  updateMember
+  updateMember,
+  getRecentMembers,
+  getMembersWithUpcomingBirthdays,
+  getExpiredMemberships
 };

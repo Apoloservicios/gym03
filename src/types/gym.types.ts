@@ -57,7 +57,7 @@ export interface Activity {
 
 // Actualización de tipos para incluir todas las categorías utilizadas
 export type TransactionIncomeCategory = 'membership' | 'extra' | 'product' | 'service' | 'other';
-export type TransactionExpenseCategory = 'withdrawal' | 'supplier' | 'services' | 'maintenance' | 'salary' | 'other';
+export type TransactionExpenseCategory = 'withdrawal' | 'supplier' | 'services' | 'maintenance' | 'salary' | 'other' | 'refund';
 export type TransactionCategory = TransactionIncomeCategory | TransactionExpenseCategory;
 
 export interface Transaction {
