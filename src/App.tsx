@@ -16,10 +16,13 @@ import Cashier from './pages/cashier/Cashier';
 import Reports from './pages/reports/Reports';
 import Activities from './pages/settings/Activities';
 import Users from './pages/settings/Users';
+
 // Importamos las nuevas páginas
 import Exercises from './pages/exercises/Exercises';
 import Routines from './pages/routines/Routines';
 import MemberRoutines from './pages/member-routines/MemberRoutines';
+import SuperAdmin from './pages/superadmin/SuperAdmin'; // Nueva importación
+
 import { auth } from './config/firebase';
 import { User as FirebaseUser } from 'firebase/auth';
 import { loginUser } from './services/auth.service';
@@ -91,6 +94,11 @@ const App: React.FC = () => {
   
   // Renderizar página basado en la selección actual
   const renderPage = () => {
+    // Si el usuario es superadmin, mostrar el panel de superadmin
+    if (userData?.role === 'superadmin') {
+      return <SuperAdmin />;
+    }
+    
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard />;
@@ -146,6 +154,11 @@ const App: React.FC = () => {
     }
   }
   
+  // Verificar si es superadmin para mostrar directamente el panel
+  if (userData?.role === 'superadmin') {
+    return <SuperAdmin />;
+  }
+  
   // Verificar permisos según el rol
   const canAccessPage = (page: string): boolean => {
     if (!userData) return false;
@@ -184,6 +197,7 @@ const App: React.FC = () => {
             {renderPage()}
           </div>
         </div>
+        
       </RouterProvider>
     </Router>
   );
